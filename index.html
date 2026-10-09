@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRM de WhatsApp · Prototipo</title>
+<!-- La versión vive en js/version.js. Se lee primero y con ella se piden los demás archivos,
+     para que el navegador nunca muestre una copia vieja. -->
+<script>document.write('<script src="js/version.js?t=' + Date.now() + '"><\/script>');</script>
+<script>
+  var VERSION_CARGADA = window.VERSION_EN_DISCO || 0;
+  document.write('<link rel="stylesheet" href="css/estilos.css?v=' + VERSION_CARGADA + '">');
+</script>
+</head>
+<body>
+  <div class="barra-proto">
+    <strong>Prototipo con datos fijos</strong>
+    <small id="verProto" style="color:#8aa0b6"></small>
+    <span class="sep"></span>
+    <label>Ver como
+      <select id="selRol">
+        <option value="A">Administrador</option>
+        <option value="S">Supervisor</option>
+        <option value="G">Agente</option>
+        <option value="P">Superadministrador</option>
+      </select>
+    </label>
+    <div class="conmutador" id="selVista">
+      <button data-vista="web" class="activo">Computadora</button>
+      <button data-vista="movil">Teléfono</button>
+    </div>
+    <button class="enlace" data-accion="ir" data-ruta="login">Pantalla de acceso</button>
+  </div>
+  <div id="marco"><div id="app"></div></div>
+  <div id="modal" class="oculto"></div>
+  <div id="avisos"></div>
+  <script>
+    document.getElementById('verProto').textContent = 'versión ' + VERSION_CARGADA;
+    document.write('<script src="js/datos.js?v=' + VERSION_CARGADA + '"><\/script><script src="js/app.js?v=' + VERSION_CARGADA + '"><\/script>');
+    // Si el prototipo cambia en el disco mientras esta pestaña sigue abierta, se recarga sola.
+    setInterval(function () {
+      var s = document.createElement('script');
+      s.src = 'js/version.js?t=' + Date.now();
+      s.onload = function () { s.remove(); if (window.VERSION_EN_DISCO && window.VERSION_EN_DISCO !== VERSION_CARGADA) location.reload(); };
+      s.onerror = function () { s.remove(); };
+      document.body.appendChild(s);
+    }, 4000);
+  </script>
+</body>
+</html>

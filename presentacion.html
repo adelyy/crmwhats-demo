@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Presentación CRM para WhatsApp</title>
+<style>
+:root{--ink:#0f172a;--muted:#475569;--soft:#64748b;--line:#e2e8f0;--bg:#f6f8fb;--card:#fff;--brand:#0e9f6e;--brand-d:#047857;--brand-l:#d1fae5;--navy:#0b1b2b;--amber:#f59e0b;--rose:#e11d48;--blue:#2563eb;--violet:#7c3aed;--out:#d9fdd3;--s:1}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0b1220;font-family:"Segoe UI",Inter,Roboto,system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+.deck{position:fixed;inset:0;overflow:hidden}
+.slide{position:absolute;left:50%;top:50%;width:1280px;height:720px;transform:translate(-50%,-50%) scale(var(--s));background:var(--bg);padding:52px 64px;display:none;overflow:hidden}
+.slide.active{display:block;animation:fade .35s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.dark{background:radial-gradient(900px 500px at 85% 20%,#0f3b36 0,transparent 60%),var(--navy);color:#fff}
+.kicker{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand-d);font-weight:700}
+.dark .kicker{color:#6ee7b7}
+h1{text-wrap:balance;font-size:54px;line-height:1.08;letter-spacing:-.02em;margin:16px 0 18px;font-weight:800}
+h2{text-wrap:balance;font-size:36px;line-height:1.15;letter-spacing:-.015em;margin:8px 0 10px;font-weight:800}
+.lead{font-size:19px;line-height:1.5;color:var(--muted)}
+.dark .lead{color:#cbd5e1}
+.foot{position:absolute;bottom:20px;left:64px;right:64px;display:flex;justify-content:space-between;font-size:12.5px;color:var(--soft)}
+.dark .foot{color:#94a3b8}
+.row{display:flex;gap:24px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+.card h3{font-size:19px;margin:12px 0 6px}
+.card p{font-size:15px;line-height:1.5;color:var(--muted)}
+.ico{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--brand-l);color:var(--brand-d)}
+.ico svg{width:24px;height:24px}
+.ico.r{background:#ffe4e6;color:var(--rose)}.ico.a{background:#fef3c7;color:#b45309}.ico.b{background:#dbeafe;color:var(--blue)}.ico.v{background:#ede9fe;color:var(--violet)}
+ul.checks{list-style:none;display:grid;gap:12px}
+ul.checks li{font-size:16.5px;line-height:1.45;padding-left:30px;position:relative;color:#1e293b}
+ul.checks li:before{content:"";position:absolute;left:0;top:3px;width:20px;height:20px;border-radius:50%;background:var(--brand-l) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5 10.5l3 3 7-7' fill='none' stroke='%23047857' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/16px no-repeat}
+ul.checks b{color:var(--ink)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:#334155;white-space:nowrap}
+.pill.g{background:var(--brand-l);color:var(--brand-d)}.pill.a{background:#fef3c7;color:#92400e}.pill.r{background:#ffe4e6;color:#9f1239}.pill.b{background:#dbeafe;color:#1e40af}.pill.v{background:#ede9fe;color:#5b21b6}
+.cta{white-space:nowrap;display:inline-flex;align-items:center;gap:10px;background:var(--brand);color:#fff;font-weight:700;font-size:18px;padding:14px 24px;border-radius:12px}
+.note{font-size:12.5px;color:var(--soft)}
+.band{margin-top:28px;background:var(--navy);color:#e2e8f0;border-radius:16px;padding:22px 28px;font-size:19px;line-height:1.45}
+.band b{color:#6ee7b7}
+/* mockups */
+.win{background:#fff;border:1px solid #dbe3ec;border-radius:14px;box-shadow:0 18px 40px -18px rgba(15,23,42,.35);overflow:hidden;font-size:12.5px;color:#0f172a}
+.bar{height:28px;background:#eef2f6;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid #e2e8f0}
+.bar i{width:10px;height:10px;border-radius:50%;background:#cbd5e1;display:block}
+.bar span{margin-left:10px;font-size:11px;color:#64748b}
+.app{display:grid;grid-template-columns:48px 290px 1fr 250px;height:450px}
+.rail{background:#0b1b2b;display:flex;flex-direction:column;align-items:center;gap:14px;padding-top:14px}
+.rail b{width:26px;height:26px;border-radius:8px;background:#1e3a4a;display:block}
+.rail b.on{background:var(--brand)}
+.list{border-right:1px solid #e2e8f0;display:flex;flex-direction:column;min-width:0}
+.lh{padding:10px 12px;border-bottom:1px solid #eef2f6}
+.sel{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13.5px}
+.kpis{display:flex;gap:6px;margin-top:8px}
+.kpis div{flex:1;background:#f8fafc;border:1px solid #eef2f6;border-radius:8px;padding:5px 6px}
+.kpis small{display:block;font-size:9.5px;color:#64748b}
+.kpis strong{font-size:14px}
+.search{margin-top:8px;background:#f1f5f9;border-radius:8px;padding:6px 9px;color:#94a3b8;font-size:11.5px}
+.tabs{display:flex;gap:10px;padding:8px 12px;border-bottom:1px solid #eef2f6;font-size:11px;color:#64748b;white-space:nowrap}
+.tabs .on{color:var(--brand-d);font-weight:700;border-bottom:2px solid var(--brand);padding-bottom:3px}
+.it{display:flex;gap:9px;padding:9px 12px;border-bottom:1px solid #f1f5f9;align-items:flex-start}
+.it.on{background:#ecfdf5}
+.av{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:11.5px;color:#fff;flex:none}
+.it .m{flex:1;min-width:0}
+.it .t{display:flex;gap:6px;justify-content:space-between;font-weight:600;font-size:12.5px}
+.it .t small{font-weight:400;color:#94a3b8;font-size:10.5px}
+.it .p{color:#64748b;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 4px}
+.it .tg{display:flex;gap:4px;align-items:center}
+.cnt{background:var(--brand);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:0 6px;margin-left:auto}
+.mini{width:18px;height:18px;border-radius:50%;font-size:8.5px;display:grid;place-items:center;color:#fff;font-weight:700;margin-left:auto}
+.chat{display:flex;flex-direction:column;background:#efeae2;min-width:0}
+.ch{background:#fff;padding:9px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0}
+.ch .n{font-weight:700;font-size:13.5px}
+.ch small{color:#64748b;font-size:10.5px;display:block;font-weight:400}
+.btn{border:1px solid #cbd5e1;border-radius:8px;padding:4px 9px;font-size:11px;font-weight:600;background:#fff;white-space:nowrap}
+.btn.p{background:var(--brand);border-color:var(--brand);color:#fff}
+.msgs{flex:1;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.day{align-self:center;background:#fff;border-radius:8px;padding:2px 10px;font-size:10.5px;color:#64748b}
+.bub{max-width:72%;background:#fff;border-radius:10px;padding:7px 10px 5px;font-size:12.5px;line-height:1.4;box-shadow:0 1px 0 rgba(0,0,0,.06)}
+.bub.o{align-self:flex-end;background:var(--out)}
+.bub small{display:block;text-align:right;font-size:9.5px;color:#64748b;margin-top:2px}
+.bub small em{color:#34b7f1;font-style:normal}
+.wave{display:flex;align-items:center;gap:2px;height:22px}
+.wave i{display:block;width:3px;border-radius:2px;background:#94a3b8}
+.play{width:22px;height:22px;border-radius:50%;background:var(--brand);margin-right:6px;position:relative;flex:none}
+.play:after{content:"";position:absolute;left:8px;top:6px;border-left:8px solid #fff;border-top:5px solid transparent;border-bottom:5px solid transparent}
+.img{height:84px;border-radius:7px;background:linear-gradient(135deg,#a7f3d0,#93c5fd);display:grid;place-items:center;color:#0f172a;font-weight:700;font-size:11px}
+.comp{background:#f0f2f5;padding:8px 12px;display:flex;gap:8px;align-items:center}
+.comp .in{flex:1;background:#fff;border-radius:18px;padding:7px 12px;color:#94a3b8;font-size:12px}
+.dot{width:24px;height:24px;border-radius:50%;background:#cbd5e1;flex:none}
+.dot.g{background:var(--brand)}
+.side{border-left:1px solid #e2e8f0;padding:12px;display:flex;flex-direction:column;gap:11px;background:#fff}
+.side h5{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:5px}
+.steps{display:flex;flex-direction:column;gap:5px}
+.steps div{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#94a3b8}
+.steps div:before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid #cbd5e1}
+.steps .d{color:#0f172a}.steps .d:before{background:var(--brand);border-color:var(--brand)}
+.steps .c{color:#0f172a;font-weight:700}.steps .c:before{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-l)}
+.case{border:1px solid #fde68a;background:#fffbeb;border-radius:8px;padding:7px 9px;font-size:11.5px}
+/* kanban */
+.kb{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:14px;background:#f8fafc;height:400px}
+.col{background:#eef2f6;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.col h6{font-size:12.5px;display:flex;align-items:center;gap:7px}
+.col h6 i{width:9px;height:9px;border-radius:50%;display:block}
+.col h6 span{margin-left:auto;color:#64748b;font-weight:600}
+.kc{background:#fff;border-radius:10px;padding:9px 10px;border:1px solid #e2e8f0;font-size:11.5px}
+.kc b{font-size:12.5px;display:block}
+.kc p{color:#64748b;margin:3px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kc div{display:flex;align-items:center;gap:6px}
+.kc strong{font-size:11.5px;color:var(--brand-d)}
+.tb{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid #e2e8f0;background:#fff}
+/* tables */
+table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+table.t th{white-space:nowrap;text-align:left;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#64748b;padding:9px 12px;border-bottom:1px solid #e2e8f0;background:#f8fafc}
+table.t td{padding:10px 12px;border-bottom:1px solid #f1f5f9;white-space:nowrap}
+/* form */
+.fm{padding:16px;display:grid;gap:11px}
+.f label{display:block;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.f div{border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12.5px;background:#fff}
+.seg{display:flex;gap:8px}
+.seg span{flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12px;text-align:center}
+.seg span.on{border-color:var(--brand);background:#ecfdf5;color:var(--brand-d);font-weight:700}
+.sum{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;font-size:12px;display:grid;gap:4px}
+.sum div{display:flex;justify-content:space-between}
+.sum .tot{border-top:1px solid #e2e8f0;padding-top:5px;font-weight:700}
+.wbtn{background:#fff;border-top:1px solid #e9edef;text-align:center;color:#0284c7;font-size:12px;padding:6px 0;font-weight:600}
+/* phone */
+.phone{width:270px;height:540px;border-radius:38px;background:#0b1220;padding:12px;box-shadow:0 24px 50px -20px rgba(15,23,42,.6);position:relative}
+.scr{width:100%;height:100%;border-radius:28px;background:#fff;overflow:hidden;display:flex;flex-direction:column;font-size:12px}
+.notch{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:96px;height:22px;background:#0b1220;border-radius:0 0 14px 14px}
+.push{position:absolute;top:44px;left:22px;right:22px;background:rgba(255,255,255,.97);border-radius:14px;padding:9px 11px;box-shadow:0 10px 24px -8px rgba(0,0,0,.35);font-size:11.5px;z-index:2}
+.push b{display:block;font-size:11.5px}
+.push small{color:#64748b;font-size:10px}
+/* dashboard */
+.dash{padding:14px;display:grid;gap:12px;background:#f8fafc}
+.tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.tile{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px}
+.tile small{font-size:10.5px;color:#64748b;display:block}
+.tile strong{font-size:20px;letter-spacing:-.01em}
+.tile em{font-style:normal;font-size:10.5px;color:var(--brand-d);font-weight:700;margin-left:4px}
+.panel{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:11px 13px}
+.panel h6{font-size:12px;margin-bottom:8px}
+.fb{display:grid;grid-template-columns:96px 1fr 58px;gap:8px;align-items:center;font-size:11.5px;margin-bottom:6px}
+.fb i{display:block;height:13px;border-radius:4px;background:var(--brand)}
+.fb span:last-child{text-align:right;font-weight:600}
+.num{white-space:nowrap;font-size:44px;font-weight:800;color:var(--brand-d);letter-spacing:-.02em}
+.stepn{flex:none;width:40px;height:40px;border-radius:50%;background:var(--brand);color:#fff;font-weight:800;display:grid;place-items:center;font-size:18px}
+.pk th,.pk td{padding:11px 14px;font-size:14.5px;border-bottom:1px solid #e2e8f0;text-align:left}
+.pk th{font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.06em}
+.pk td.y{color:var(--brand-d);font-weight:700}
+.pk td.n{color:#94a3b8}
+/* controls */
+.ctl{position:fixed;right:14px;bottom:12px;display:flex;gap:6px;align-items:center;z-index:10;font:12px system-ui;color:#cbd5e1;opacity:0;transition:opacity .3s}
+body.ui .ctl,.ctl:hover{opacity:1}
+.ctl button{background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:8px;width:34px;height:30px;cursor:pointer;font-size:15px}
+.prog{position:fixed;left:0;top:0;height:3px;background:var(--brand);z-index:10;transition:width .3s}
+@media print{
+@page{size:1280px 720px;margin:0}
+html,body{background:#fff}
+.deck{position:static}
+.slide{display:block!important;position:relative;left:auto;top:auto;transform:none;page-break-after:always;break-after:page;animation:none}
+.ctl,.prog{display:none}
+}
+</style>
+</head>
+<body>
+<div class="prog" id="prog"></div>
+<div class="deck" id="deck">
+<!-- 1 Portada -->
+<section class="slide dark">
+<div style="display:grid;grid-template-columns:1.1fr .9fr;gap:40px;height:100%;align-items:center">
+<div>
+<div class="kicker">CRM de ventas para WhatsApp</div>
+<h1 style="font-size:48px">Todas las conversaciones de WhatsApp de tu empresa, en un solo lugar</h1>
+<p class="lead">Atiende, asigna, da seguimiento y mide a cada cliente desde una bandeja compartida, con campañas oficiales y reportes al momento.</p>
+<div style="margin-top:30px;display:flex;gap:14px;align-items:center"><span class="cta">Prueba gratis 7 días</span><span style="color:#94a3b8;font-size:15px;line-height:1.5">En la web y en tu celular<br>Usa tu número actual</span></div>
+</div>
+<div class="win" style="transform:rotate(-1.5deg)">
+<div class="bar"><i></i><i></i><i></i><span data-brand></span></div>
+<div style="display:grid;grid-template-columns:225px 1fr;height:330px">
+<div class="list">
+<div class="lh"><div class="sel">Pedidos <span>▾</span></div></div>
+<div class="it on"><div class="av" style="background:#0ea5e9">LM</div><div class="m"><div class="t">Laura Méndez</div><div class="p">¿Ya salió mi pedido? 🙏</div></div></div>
+<div class="it"><div class="av" style="background:#8b5cf6">TN</div><div class="m"><div class="t">Tienda Norte</div><div class="p">Mándame la lista de precios</div></div></div>
+<div class="it"><div class="av" style="background:#f59e0b">CR</div><div class="m"><div class="t">Carlos Ruiz</div><div class="p">🎤 Nota de voz</div></div></div>
+<div class="it"><div class="av" style="background:#10b981">FP</div><div class="m"><div class="t">Ferretería El Puente</div><div class="p">¿Tienen envío a Monterrey?</div></div></div>
+</div>
+<div class="chat">
+<div class="msgs">
+<div class="bub">Hola, buen día. ¿Ya salió mi pedido? 🙏<small>10:38</small></div>
+<div class="bub o">¡Hola Laura! Ya va en camino, te comparto la guía.<small>10:40 <em>✓✓</em></small></div>
+<div class="bub o"><div class="img">Guía de envío</div><small>10:41 <em>✓✓</em></small></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="foot"><span data-brand></span><span>Presentación comercial · 2026</span></div>
+</section>
+<!-- 2 Problema -->
+<section class="slide">
+<div class="kicker">El problema</div>
+<h2>Hoy las ventas por WhatsApp se pierden entre celulares</h2>
+<p class="lead" style="max-width:900px">Tus clientes ya te escriben por WhatsApp, pero sin un sistema nadie sabe quién atendió a quién, qué se prometió ni cuánto vendió cada campaña.</p>
+<div class="g4" style="margin-top:34px">
+<div class="card"><div class="ico r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg></div><h3>Chats en celulares personales</h3><p>Si un vendedor se va, se lleva sus conversaciones y sus clientes.</p></div>
+<div class="card"><div class="ico a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>Clientes sin respuesta</h3><p>Pedidos, pagos y garantías que se olvidan porque nadie es responsable.</p></div>
+<div class="card"><div class="ico b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg></div><h3>Campañas a ciegas</h3><p>No sabes quién leyó, respondió, hizo clic o compró.</p></div>
+<div class="card"><div class="ico v"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div><h3>Riesgo de bloqueo</h3><p>Envíos masivos sin control de bajas pueden hacer que Meta limite tu número.</p></div>
+</div>
+<div class="band">¿Te suena? Es lo que pasa cuando WhatsApp crece más rápido que la forma de atenderlo. <b>Y tiene solución.</b></div>
+<div class="foot"><span data-brand></span><span>2</span></div>
+</section>
+<!-- 3 Solucion -->
+<section class="slide">
+<div class="kicker">La solución</div>
+<h2>Un CRM construido alrededor de WhatsApp</h2>
+<p class="lead">Todo tu equipo, todos tus números y todos tus clientes en una sola plataforma web y móvil.</p>
+<div class="g3" style="margin-top:28px">
+<div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4h16v12H8l-4 4z"/></svg></div><h3>Bandeja compartida</h3><p>Varios números de WhatsApp, cada uno con su bandeja, atendidos por todo el equipo.</p></div>
+<div class="card"><div class="ico b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/></svg></div><h3>Embudos de venta</h3><p>Etapas y etiquetas que tú defines, para saber en qué va cada cliente.</p></div>
+<div class="card"><div class="ico a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M17 11l2 2 3-3"/></svg></div><h3>Tickets y asignación</h3><p>Cada conversación y cada problema tiene un responsable y un tiempo medido.</p></div>
+<div class="card"><div class="ico v"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 11l16-7v16L3 13z"/><path d="M7 13v5"/></svg></div><h3>Campañas oficiales</h3><p>Envíos masivos con plantillas aprobadas por Meta, con bajas y límites bajo control.</p></div>
+<div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div><h3>Reportes</h3><p>Mensajes, tiempos de respuesta, conversiones y resultados de cada campaña.</p></div>
+<div class="card"><div class="ico r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div><h3>App móvil</h3><p>Tu equipo atiende desde iOS y Android, con notificaciones al instante.</p></div>
+</div>
+<div class="foot"><span data-brand></span><span>3</span></div>
+</section>
+<!-- 4 Como funciona -->
+<section class="slide">
+<div class="kicker">Cómo funciona</div>
+<h2>Todo llega a la bandeja de cada número y termina en reportes</h2>
+<svg viewBox="0 0 1152 470" style="width:1152px;height:470px;margin-top:14px" font-family="Segoe UI,Inter,system-ui,sans-serif">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#64748b"/></marker></defs>
+<g font-size="13" font-weight="700" fill="#047857" letter-spacing="1.5"><text x="0" y="36">ATENCIÓN</text><text x="0" y="226">CAMPAÑAS</text></g>
+<g fill="none" stroke="#64748b" stroke-width="1.6">
+<path d="M196 98H232" marker-end="url(#ar)"/><path d="M432 98H468" marker-end="url(#ar)"/><path d="M668 98H704" marker-end="url(#ar)"/><path d="M904 98H940" marker-end="url(#ar)"/>
+<path d="M196 288H232" marker-end="url(#ar)"/><path d="M432 288H468" marker-end="url(#ar)"/><path d="M668 288H704" marker-end="url(#ar)"/><path d="M904 288H940" marker-end="url(#ar)"/>
+<path d="M1046 252V184H332V138" marker-end="url(#ar)"/>
+<path d="M1046 324V368H568V328" marker-end="url(#ar)"/>
+</g>
+<g font-size="15" text-anchor="middle" fill="#0f172a">
+<rect x="0" y="58" width="196" height="80" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="98" y="94">Cliente escribe</text><text x="98" y="114" font-size="12.5" fill="#64748b">a cualquiera de tus números</text>
+<rect x="236" y="58" width="196" height="80" rx="12" fill="#ecfdf5" stroke="#0e9f6e" stroke-width="2"/><text x="334" y="94" font-weight="700">Bandeja del número</text><text x="334" y="114" font-size="12.5" fill="#047857">Pedidos, Ventas, Soporte</text>
+<rect x="472" y="58" width="196" height="80" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="570" y="94">Se asigna</text><text x="570" y="114" font-size="12.5" fill="#64748b">a un agente disponible</text>
+<rect x="708" y="58" width="196" height="80" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="806" y="94">Responde y clasifica</text><text x="806" y="114" font-size="12.5" fill="#64748b">etiqueta y etapa de venta</text>
+<rect x="944" y="58" width="196" height="80" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="1042" y="94">Cierra o abre un ticket</text><text x="1042" y="114" font-size="12.5" fill="#64748b">con responsable y tiempo</text>
+<rect x="0" y="248" width="196" height="80" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="98" y="284">Plantilla aprobada</text><text x="98" y="304" font-size="12.5" fill="#64748b">por Meta</text>
+<rect x="236" y="248" width="196" height="80" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="334" y="284">Audiencia</text><text x="334" y="304" font-size="12.5" fill="#64748b">archivo CSV o etiquetas</text>
+<rect x="472" y="248" width="196" height="80" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="570" y="284">Limpieza automática</text><text x="570" y="304" font-size="12.5" fill="#64748b">sin bajas ni duplicados</text>
+<rect x="708" y="248" width="196" height="80" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="806" y="284">Envío programado</text><text x="806" y="304" font-size="12.5" fill="#64748b">dentro del cupo de Meta</text>
+<rect x="944" y="248" width="196" height="80" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="1042" y="284">El cliente responde</text><text x="1042" y="304" font-size="12.5" fill="#64748b">o pide su baja</text>
+</g>
+<g font-size="13" fill="#475569" text-anchor="middle"><text x="690" y="176">la respuesta entra a la bandeja y se atiende como cualquier chat</text><text x="806" y="388">si pide baja, entra a la lista de supresión y no vuelve a recibir promociones</text></g>
+<rect x="0" y="410" width="1140" height="52" rx="12" fill="#0b1b2b"/>
+<text x="570" y="442" text-anchor="middle" font-size="15" fill="#fff">Reportes: mensajes por día, tiempos por agente, resultados de campañas, conversiones y bajas</text>
+</svg>
+<div class="foot"><span data-brand></span><span>4</span></div>
+</section>
+<!-- 5 Bandeja -->
+<section class="slide">
+<div class="row" style="justify-content:space-between;align-items:flex-end">
+<div><div class="kicker">Bandeja compartida</div><h2>Se siente como WhatsApp, pero con todo el contexto</h2></div>
+</div>
+<div class="win" style="margin-top:12px">
+<div class="bar"><i></i><i></i><i></i><span>Bandeja · Pedidos</span></div>
+<div class="app">
+<div class="rail"><b class="on"></b><b></b><b></b><b></b><b></b><b></b></div>
+<div class="list">
+<div class="lh"><div class="sel">Pedidos <span style="font-weight:400;color:#64748b;font-size:11px">cambiar número ▾</span></div>
+<div class="kpis"><div><small>Recibidos hoy</small><strong>128</strong></div><div><small>Enviados</small><strong>141</strong></div><div><small>Sin responder</small><strong style="color:#e11d48">6</strong></div></div>
+<div class="search">Buscar por nombre o teléfono…</div></div>
+<div class="tabs"><span class="on">Todas</span><span>Sin leer 4</span><span>Sin responder 6</span><span>Mías</span></div>
+<div class="it on"><div class="av" style="background:#0ea5e9">LM</div><div class="m"><div class="t">Laura Méndez <small>10:42</small></div><div class="p">🎤 Nota de voz (0:18)</div><div class="tg"><span class="pill b">Rastreo</span><span class="pill a">⏱ 8 min</span><span class="mini" style="background:#0e9f6e">KR</span></div></div></div>
+<div class="it"><div class="av" style="background:#8b5cf6">TN</div><div class="m"><div class="t">Tienda Norte <small>10:31</small></div><div class="p">Mándame la lista de precios de mayoreo</div><div class="tg"><span class="pill g">Interesado</span><span class="mini" style="background:#2563eb">JP</span></div></div></div>
+<div class="it"><div class="av" style="background:#f59e0b">CR</div><div class="m"><div class="t">Carlos Ruiz <small>10:15</small></div><div class="p">La bomba dejó de funcionar</div><div class="tg"><span class="pill r">Garantía</span><span class="pill a">⏱ 25 min</span><span class="cnt">2</span></div></div></div>
+<div class="it"><div class="av" style="background:#10b981">SR</div><div class="m"><div class="t">Sofía Ramírez <small>09:12</small></div><div class="p">QUIERO</div><div class="tg"><span class="pill v">Campaña: Buen Fin</span><span class="cnt">1</span></div></div></div>
+<div class="it"><div class="av" style="background:#64748b">AT</div><div class="m"><div class="t">Ana Torres <small>Ayer</small></div><div class="p">Gracias, ya quedó el pago</div><div class="tg"><span class="pill">Cerrada</span></div></div></div>
+</div>
+<div class="chat">
+<div class="ch"><div class="av" style="background:#0ea5e9">LM</div><div style="flex:1;min-width:0;white-space:nowrap"><div class="n">Laura Méndez<small>Número: Pedidos</small></div></div><span class="pill g">Ventana abierta · 23 h</span><span class="btn">Karla R. ▾</span><span class="btn p">Crear ticket</span></div>
+<div class="msgs">
+<div class="day">HOY</div>
+<div class="bub">Hola, buen día. ¿Ya salió mi pedido? 🙏<small>10:38</small></div>
+<div class="bub o">¡Hola Laura! Ya va en camino, te comparto la guía de envío.<small>10:40 <em>✓✓</em></small></div>
+<div class="bub o" style="width:190px"><div class="img">Guía de envío.pdf</div><small>10:41 <em>✓✓</em></small></div>
+<div class="bub" style="display:flex;align-items:center;width:210px"><span class="play"></span><span class="wave"><i style="height:8px"></i><i style="height:14px"></i><i style="height:20px"></i><i style="height:10px"></i><i style="height:16px"></i><i style="height:22px"></i><i style="height:12px"></i><i style="height:18px"></i><i style="height:8px"></i><i style="height:14px"></i><i style="height:20px"></i><i style="height:10px"></i><i style="height:16px"></i><i style="height:6px"></i><i style="height:12px"></i><i style="height:18px"></i></span><small style="margin-left:6px">0:18</small></div>
+</div>
+<div class="comp"><span class="dot"></span><span class="dot"></span><span class="in">Escribe un mensaje o usa una respuesta rápida con /</span><span class="dot g"></span></div>
+</div>
+<div class="side">
+<div><b style="font-size:13.5px">Laura Méndez</b><div style="color:#64748b;font-size:11px">Cliente existente · ⭐ Cliente especial</div></div>
+<div><h5>Etapa · Embudo Ventas</h5><div class="steps"><div class="d">Nuevo</div><div class="d">Interesado</div><div class="c">Cotizado</div><div>Ganado</div></div></div>
+<div><h5>Etiquetas</h5><div style="display:flex;gap:4px;flex-wrap:wrap"><span class="pill b">Rastreo</span><span class="pill r">Problema con envío</span><span class="pill">+ Agregar</span></div></div>
+<div><h5>Ticket abierto</h5><div class="case"><b>#1042 Problema con envío</b><br>Asignado a Karla · hace 12 min</div></div>
+<div><h5>Notas internas</h5><div style="font-size:11.5px;color:#475569">Prefiere entrega por la tarde.</div></div>
+</div>
+</div>
+</div>
+<div class="foot"><span data-brand></span><span>Pantalla ilustrativa con datos de ejemplo · 5</span></div>
+</section>
+<!-- 6 Bandeja features -->
+<section class="slide">
+<div class="kicker">Bandeja y chat</div>
+<h2>Cada mensaje con dueño, contexto y tiempo de respuesta</h2>
+<div class="g2" style="margin-top:26px;gap:40px">
+<ul class="checks">
+<li><b>Varios números, una plataforma.</b> Cambia entre Pedidos, Ventas o Soporte; cada número tiene su bandeja y sus usuarios.</li>
+<li><b>Filtros que sí sirven:</b> etiqueta, etapa, campaña, responsable, sucursal, tickets abiertos y clientes especiales.</li>
+<li><b>Contadores del día</b> a la vista: recibidos, enviados, sin responder y costo de plantillas.</li>
+<li><b>Tiempo de espera</b> en cada conversación para que nadie se quede sin respuesta.</li>
+<li><b>Cierre manual o por inactividad</b>, con notificaciones en el navegador y en el celular.</li>
+</ul>
+<ul class="checks">
+<li><b>Responde como en WhatsApp:</b> texto, emojis, notas de voz, audio, fotos, videos y documentos.</li>
+<li><b>Respuestas rápidas</b> con texto, imagen o archivo, a un clic.</li>
+<li><b>Aviso de la ventana de 24 horas:</b> al vencer, el sistema solo ofrece plantillas aprobadas.</li>
+<li><b>Ficha del cliente</b> con etapa, etiquetas, notas internas, tickets y campañas recibidas.</li>
+<li><b>Asignación y reasignación</b> según la disponibilidad de cada agente.</li>
+</ul>
+</div>
+<div class="band">Si un vendedor se va, <b>sus conversaciones y sus clientes se quedan en tu empresa.</b></div>
+<div class="foot"><span data-brand></span><span>6</span></div>
+</section>
+<!-- 7 Embudos -->
+<section class="slide">
+<div class="kicker">Embudos de venta</div>
+<h2>Mira en qué va cada cliente y muévelo con un clic</h2>
+<div class="win" style="margin-top:14px">
+<div class="tb"><span class="btn">Embudo: Ventas mayoreo ▾</span><span class="btn">Todos los asesores ▾</span><span class="btn">Última actividad ▾</span><span style="margin-left:auto" class="btn p">Gestionar etapas</span></div>
+<div class="kb">
+<div class="col"><h6><i style="background:#94a3b8"></i>Nuevo<span>12</span></h6>
+<div class="kc"><b>Ferretería El Puente</b><p>¿Tienen envío a Monterrey?</p><div><span class="pill a">⏱ 5 min</span><span class="mini" style="background:#94a3b8">—</span></div></div>
+<div class="kc"><b>Mario Gómez</b><p>Vi su anuncio en Facebook</p><div><span class="pill">Hoy</span><span class="mini" style="background:#0e9f6e">KR</span></div></div></div>
+<div class="col"><h6><i style="background:#0ea5e9"></i>Contactado<span>8</span></h6>
+<div class="kc"><b>Grupo Alameda</b><p>Te envío el catálogo completo</p><div><span class="pill">Ayer</span><span class="mini" style="background:#2563eb">JP</span></div></div>
+<div class="kc"><b>Rosa Elena V.</b><p>¿Manejan crédito?</p><div><span class="pill">Ayer</span><span class="mini" style="background:#7c3aed">LM</span></div></div></div>
+<div class="col"><h6><i style="background:#8b5cf6"></i>Interesado<span>6</span></h6>
+<div class="kc"><b>Tienda Norte</b><p>Mándame la lista de precios</p><div><strong>$48,000</strong><span class="mini" style="background:#2563eb">JP</span></div></div>
+<div class="kc"><b>Sofía Ramírez</b><p>QUIERO</p><div><span class="pill v">Buen Fin</span><span class="mini" style="background:#0e9f6e">KR</span></div></div></div>
+<div class="col"><h6><i style="background:#f59e0b"></i>Cotizado<span>4</span></h6>
+<div class="kc"><b>Laura Méndez</b><p>Perfecto, espero la cotización</p><div><strong>$12,400</strong><span class="mini" style="background:#0e9f6e">KR</span></div></div>
+<div class="kc"><b>Taller Hermanos Cruz</b><p>¿Me respetan el precio?</p><div><strong>$7,850</strong><span class="mini" style="background:#7c3aed">LM</span></div></div></div>
+<div class="col"><h6><i style="background:#10b981"></i>Ganado<span>9</span></h6>
+<div class="kc"><b>Comercial Sierra</b><p>Listo, ya hice el depósito</p><div><strong>$31,200</strong><span class="mini" style="background:#2563eb">JP</span></div></div>
+<div class="kc"><b>Ana Torres</b><p>Gracias, ya quedó el pago</p><div><strong>$3,900</strong><span class="mini" style="background:#0e9f6e">KR</span></div></div></div>
+</div>
+</div>
+<p class="note" style="margin-top:12px">Cada empresa crea sus propios embudos, etapas y etiquetas (por ejemplo: Problema con envío, Pago no reflejado, Garantía, Rastreo). La etapa también se cambia desde el chat.</p>
+<div class="foot"><span data-brand></span><span>Pantalla ilustrativa con datos de ejemplo · 7</span></div>
+</section>
+<!-- 8 Tickets -->
+<section class="slide">
+<div class="kicker">Tickets y asignación</div>
+<h2>Ningún problema se queda sin responsable</h2>
+<div style="display:grid;grid-template-columns:1.45fr 1fr;gap:30px;margin-top:20px">
+<div><div class="win">
+<div class="tb"><b style="font-size:13.5px">Tickets</b><span class="pill a">7 abiertos</span><span style="margin-left:auto" class="btn">Motivo ▾</span><span class="btn">Responsable ▾</span></div>
+<table class="t">
+<tr><th>#</th><th>Motivo</th><th>Cliente</th><th>Responsable</th><th>Estado</th><th>1ª respuesta</th></tr>
+<tr><td>1042</td><td><span class="pill r">Problema con envío</span></td><td>Laura Méndez</td><td>Karla R.</td><td><span class="pill a">Abierto</span></td><td>4 min</td></tr>
+<tr><td>1041</td><td><span class="pill a">Pago no reflejado</span></td><td>Ana Torres</td><td>Jorge P.</td><td><span class="pill b">En proceso</span></td><td>9 min</td></tr>
+<tr><td>1039</td><td><span class="pill r">Garantía</span></td><td>Carlos Ruiz</td><td>Karla R.</td><td><span class="pill a">Abierto</span></td><td>—</td></tr>
+<tr><td>1036</td><td><span class="pill b">Rastreo</span></td><td>Sofía Ramírez</td><td>Luis M.</td><td><span class="pill g">Cerrado</span></td><td>3 min</td></tr>
+<tr><td>1033</td><td><span class="pill">Reportar pedido</span></td><td>Grupo Alameda</td><td>Jorge P.</td><td><span class="pill g">Cerrado</span></td><td>6 min</td></tr>
+</table>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px"><div class="tile"><small>Tickets abiertos</small><strong>7</strong></div><div class="tile"><small>1ª respuesta promedio</small><strong>5.5 min</strong></div><div class="tile"><small>Cierre promedio</small><strong>3.4 h</strong></div></div></div>
+<div style="display:grid;gap:14px;align-content:start">
+<div class="row" style="gap:14px;align-items:center"><div class="stepn">1</div><div style="font-size:16.5px">El supervisor <b>levanta un ticket</b> desde la conversación, con su motivo.</div></div>
+<div class="row" style="gap:14px;align-items:center"><div class="stepn">2</div><div style="font-size:16.5px">Lo <b>asigna</b> al agente indicado.</div></div>
+<div class="row" style="gap:14px;align-items:center"><div class="stepn">3</div><div style="font-size:16.5px">El agente <b>lo atiende y lo cierra</b>.</div></div>
+<div class="row" style="gap:14px;align-items:center"><div class="stepn">4</div><div style="font-size:16.5px">Se mide <b>primera respuesta y cierre</b> por agente.</div></div>
+</div>
+</div>
+<div class="foot"><span data-brand></span><span>Pantalla ilustrativa con datos de ejemplo · 8</span></div>
+</section>
+<!-- 9 Campañas -->
+<section class="slide">
+<div class="kicker">Campañas</div>
+<h2>Campañas masivas sin poner en riesgo tu número</h2>
+<div style="display:grid;grid-template-columns:1.25fr .75fr;gap:30px;margin-top:16px">
+<div class="win">
+<div class="tb"><b style="font-size:13.5px">Nueva campaña</b><span style="margin-left:auto" class="btn">Cancelar</span><span class="btn p">Programar envío</span></div>
+<div style="display:grid;grid-template-columns:1fr 230px;gap:14px;padding:14px">
+<div class="fm" style="padding:0">
+<div class="f"><label>Nombre</label><div>Buen Fin 2026</div></div>
+<div class="f"><label>Plantilla aprobada</label><div>promo_buen_fin (es_MX) · Marketing</div></div>
+<div class="f"><label>Destinatarios</label><div class="seg" style="border:0;padding:0"><span class="on">Archivo CSV ✓ clientes_nov.csv</span><span>Segmento por etiquetas</span></div></div>
+<div class="f"><label>Envío</label><div class="seg" style="border:0;padding:0"><span>Inmediato</span><span class="on">14 nov 2026 · 10:00</span></div></div>
+<div class="sum"><div><span>Contactos en el archivo</span><span>3,059</span></div><div><span>Dados de baja (se excluyen)</span><span style="color:#e11d48">−41</span></div><div><span>Duplicados e inválidos</span><span style="color:#e11d48">−18</span></div><div class="tot"><span>Se enviarán</span><span>3,000</span></div><div><span style="color:#64748b">Cupo de Meta hoy: 2,000 · se reparte en 2 días</span></div></div>
+</div>
+<div style="background:#efeae2;border-radius:12px;padding:12px">
+<div class="bub" style="max-width:100%;padding:0;overflow:hidden"><div class="img" style="border-radius:0;height:90px">Imagen de la promoción</div><div style="padding:8px 10px 2px">¡Hola {{1}}! Este Buen Fin tienes 20% de descuento en toda la tienda. 🎉<small>10:00</small></div><div class="wbtn">Ver promociones</div><div class="wbtn">Dejar de recibir promociones</div></div>
+</div>
+</div>
+</div>
+<ul class="checks" style="align-content:start">
+<li><b>Plantillas oficiales</b> aprobadas por Meta, con variables por cliente.</li>
+<li><b>Lista de bajas obligatoria:</b> quien pide su baja no vuelve a recibir promociones.</li>
+<li><b>Respeta los límites de Meta</b> y reparte el envío si hace falta.</li>
+<li><b>Rastreo por cliente:</b> entregado, leído, respondió, clic, baja y conversión.</li>
+<li><b>Respuestas automáticas:</b> si responde "QUIERO", recibe el catálogo y pasa a Interesado.</li>
+</ul>
+</div>
+<div class="foot"><span data-brand></span><span>Pantalla ilustrativa con datos de ejemplo · 9</span></div>
+</section>
+<!-- 10 Plantillas y automatizacion -->
+<section class="slide">
+<div class="kicker">Plantillas y automatización</div>
+<h2>Tu equipo responde más rápido y siempre igual de bien</h2>
+<div class="g3" style="margin-top:28px">
+<div class="card"><div class="ico v"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div><h3>Plantillas de Meta</h3><p>Créalas en la plataforma (texto, imagen, video, carrusel y botones), envíalas a aprobación y consulta su estado sin salir del CRM.</p></div>
+<div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><h3>Respuestas rápidas</h3><p>Precios, políticas, catálogos y datos de pago listos para enviar, con foto, video o archivo.</p></div>
+<div class="card"><div class="ico a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>Mensajes automáticos</h3><p>Respuestas fuera de horario por número, mensajes con vigencia y reglas por palabra clave o expresión regular.</p></div>
+</div>
+<div class="card" style="margin-top:22px;display:flex;gap:26px;align-items:center">
+<div class="num">24 h</div>
+<p style="font-size:16.5px;color:#334155;line-height:1.5">WhatsApp solo permite mensajes libres dentro de las 24 horas siguientes al último mensaje del cliente. El CRM lleva la cuenta por ti y, al vencer, te ofrece solo plantillas aprobadas, para que nunca falle un envío.</p>
+</div>
+<div class="foot"><span data-brand></span><span>10</span></div>
+</section>
+<!-- 11 Reportes -->
+<section class="slide">
+<div class="kicker">Reportes</div>
+<h2>Decide con datos: qué vende, quién responde y qué funciona</h2>
+<div class="win" style="margin-top:12px">
+<div class="tb"><b style="font-size:13.5px">Resumen del negocio</b><span class="btn">Hoy</span><span class="btn p">Semana</span><span class="btn">Mes</span><span class="btn">Personalizado</span><span style="margin-left:auto" class="btn">Todos los números ▾</span></div>
+<div class="dash">
+<div class="tiles">
+<div class="tile"><small>Mensajes recibidos</small><strong>1,284</strong><em>+12%</em></div>
+<div class="tile"><small>% respondidas</small><strong>96%</strong><em>+3 pts</em></div>
+<div class="tile"><small>1ª respuesta</small><strong>3.2 min</strong><em>−1.1</em></div>
+<div class="tile"><small>Sin responder</small><strong style="color:#e11d48">14</strong></div>
+<div class="tile"><small>Nuevos leads</small><strong>87</strong><em>+18%</em></div>
+<div class="tile"><small>Conversiones</small><strong>23</strong><em>+5</em></div>
+</div>
+<div style="display:grid;grid-template-columns:1.1fr 1fr .8fr;gap:12px">
+<div class="panel"><h6>Mensajes por día</h6>
+<svg viewBox="0 0 440 170" style="width:100%;height:170px" font-size="10.5" fill="#64748b">
+<g stroke="#eef2f6"><path d="M30 18H430M30 56H430M30 94H430M30 132H430"/></g>
+<polyline fill="none" stroke="#0e9f6e" stroke-width="2.5" points="30,112 95,88 160,96 225,62 290,76 355,46 420,78"/>
+<polyline fill="none" stroke="#2563eb" stroke-width="2.5" stroke-dasharray="5 4" points="30,104 95,76 160,86 225,48 290,66 355,30 420,62"/>
+<g text-anchor="middle"><text x="30" y="152">Lun</text><text x="95" y="152">Mar</text><text x="160" y="152">Mié</text><text x="225" y="152">Jue</text><text x="290" y="152">Vie</text><text x="355" y="152">Sáb</text><text x="420" y="152">Dom</text></g>
+<g font-size="11"><rect x="300" y="160" width="10" height="3" fill="#0e9f6e"/><text x="314" y="165" fill="#0f172a">Recibidos</text><rect x="368" y="160" width="10" height="3" fill="#2563eb"/><text x="382" y="165" fill="#0f172a">Enviados</text></g>
+</svg></div>
+<div class="panel"><h6>Campaña Buen Fin 2026</h6>
+<div class="fb"><span>Enviados</span><i style="width:100%"></i><span>3,000</span></div>
+<div class="fb"><span>Entregados</span><i style="width:98%"></i><span>2,941</span></div>
+<div class="fb"><span>Leídos</span><i style="width:77%"></i><span>2,310</span></div>
+<div class="fb"><span>Respondieron</span><i style="width:21%"></i><span>642</span></div>
+<div class="fb"><span>Clic</span><i style="width:14%"></i><span>418</span></div>
+<div class="fb"><span>Conversiones</span><i style="width:4%;background:#f59e0b"></i><span>112</span></div>
+<div class="fb"><span>Bajas</span><i style="width:1%;background:#e11d48"></i><span>19</span></div></div>
+<div class="panel"><h6>Por agente</h6>
+<table class="t" style="font-size:11.5px"><tr><th style="padding:5px 6px">Agente</th><th style="padding:5px 6px">Resp.</th><th style="padding:5px 6px">1ª resp.</th></tr>
+<tr><td style="padding:7px 6px">Karla R.</td><td style="padding:7px 6px">98%</td><td style="padding:7px 6px">2.4 min</td></tr>
+<tr><td style="padding:7px 6px">Jorge P.</td><td style="padding:7px 6px">95%</td><td style="padding:7px 6px">3.1 min</td></tr>
+<tr><td style="padding:7px 6px">Luis M.</td><td style="padding:7px 6px">91%</td><td style="padding:7px 6px">4.8 min</td></tr>
+<tr><td style="padding:7px 6px">Daniela S.</td><td style="padding:7px 6px">97%</td><td style="padding:7px 6px">2.9 min</td></tr></table></div>
+</div>
+</div>
+</div>
+<div class="foot"><span data-brand></span><span>Pantalla ilustrativa con datos de ejemplo · 11</span></div>
+</section>
+<!-- 12 App movil, grupos, listas -->
+<section class="slide">
+<div style="display:grid;grid-template-columns:330px 1fr;gap:56px;align-items:center;height:100%;padding-bottom:20px">
+<div class="phone"><div class="notch"></div>
+<div class="push"><b>Pedidos · Laura Méndez</b>¿Ya salió mi pedido? 🙏<br><small>ahora</small></div>
+<div class="scr">
+<div style="height:110px;background:#0b1b2b"></div>
+<div class="it on"><div class="av" style="background:#0ea5e9">LM</div><div class="m"><div class="t">Laura Méndez <small>10:42</small></div><div class="p">¿Ya salió mi pedido? 🙏</div></div></div>
+<div class="it"><div class="av" style="background:#8b5cf6">TN</div><div class="m"><div class="t">Tienda Norte <small>10:31</small></div><div class="p">Mándame la lista de precios</div></div></div>
+<div class="it"><div class="av" style="background:#0e9f6e">EQ</div><div class="m"><div class="t">Grupo: Mayoristas Bajío <small>10:20</small></div><div class="p">Jorge: ya les compartí el catálogo</div></div></div>
+<div class="it"><div class="av" style="background:#f59e0b">CR</div><div class="m"><div class="t">Carlos Ruiz <small>10:15</small></div><div class="p">🎤 Nota de voz</div></div></div>
+<div class="it"><div class="av" style="background:#10b981">SR</div><div class="m"><div class="t">Sofía Ramírez <small>09:12</small></div><div class="p">QUIERO</div></div></div>
+</div></div>
+<div>
+<div class="kicker">Atiende desde cualquier lugar</div>
+<h2>App móvil, grupos y listas de difusión</h2>
+<ul class="checks" style="margin-top:20px">
+<li><b>App para iOS y Android:</b> bandeja, chat con notas de voz, asignación, tickets, etiquetas y etapa, con notificaciones al instante.</li>
+<li><b>Grupos de WhatsApp</b> dentro de la bandeja, con su propio filtro.</li>
+<li><b>Listas de difusión:</b> guarda listas de clientes y envíales una campaña con plantilla aprobada en un clic.</li>
+<li><b>La configuración, campañas y reportes</b> se manejan cómodamente desde la web.</li>
+</ul>
+<p class="note" style="margin-top:16px">Los grupos por la conexión oficial de Meta admiten hasta 8 participantes y requieren cuenta oficial de empresa.</p>
+</div>
+</div>
+<div class="foot"><span data-brand></span><span>Pantalla ilustrativa con datos de ejemplo · 12</span></div>
+</section>
+<!-- 13 Conexion -->
+<section class="slide">
+<div class="kicker">Conexión</div>
+<h2>Conecta tu WhatsApp en minutos, sin cambiar de número</h2>
+<div class="g3" style="margin-top:26px">
+<div class="card" style="border:2px solid var(--brand)"><span class="pill g">Paquete Completo</span><h3>API oficial de Meta</h3><p>Botón "Conectar con Meta": inicias sesión con Facebook, eliges tu portafolio comercial y tu número. Campañas, plantillas y todo el potencial de la plataforma.</p></div>
+<div class="card"><span class="pill b">Paquete Básico</span><h3>Tu app WhatsApp Business</h3><p>Sigues usando la app en tu celular y el CRM ve y responde los mismos chats, también por la vía oficial de Meta. Ideal para empezar.</p></div>
+<div class="card"><span class="pill">Opción avanzada</span><h3>Conexión rápida por QR</h3><p>Para casos especiales. No es una conexión oficial de Meta y el número puede ser bloqueado; se activa solo si el cliente acepta ese riesgo.</p></div>
+</div>
+<div class="row" style="margin-top:30px;gap:18px;align-items:center;justify-content:space-between;white-space:nowrap">
+<div class="row" style="gap:12px;align-items:center"><div class="stepn">1</div><span style="font-size:16.5px">Conectar con Meta</span></div><span style="color:#94a3b8;font-size:22px">→</span>
+<div class="row" style="gap:12px;align-items:center"><div class="stepn">2</div><span style="font-size:16.5px">Elegir el número</span></div><span style="color:#94a3b8;font-size:22px">→</span>
+<div class="row" style="gap:12px;align-items:center"><div class="stepn">3</div><span style="font-size:16.5px">Nombrarlo y dar permisos</span></div><span style="color:#94a3b8;font-size:22px">→</span>
+<div class="row" style="gap:12px;align-items:center"><div class="stepn">4</div><span style="font-size:16.5px">Listo para atender</span></div>
+</div>
+<div class="band">Si ya usas la app WhatsApp Business, <b>conservas tu número, tu app y el historial de tus chats de los últimos 6 meses.</b></div>
+<div class="foot"><span data-brand></span><span>13</span></div>
+</section>
+<!-- 14 Proteccion -->
+<section class="slide">
+<div class="kicker">Seguridad y cumplimiento</div>
+<h2>Protegemos tu número, tus datos y tu presupuesto</h2>
+<div class="g3" style="margin-top:26px">
+<div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3 3 7 3s7-1.3 7-3"/></svg></div><h3>Tu propia base de datos</h3><p>La información de tu empresa vive separada de la de cualquier otra empresa.</p></div>
+<div class="card"><div class="ico b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><h3>Permisos por rol y número</h3><p>Administrador, supervisor y agente; cada quien ve solo los números que le corresponden.</p></div>
+<div class="card"><div class="ico r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg></div><h3>Bajas respetadas siempre</h3><p>Botón de baja, palabras como BAJA o STOP y rechazos de Meta alimentan una lista que ninguna campaña puede saltar.</p></div>
+<div class="card"><div class="ico a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg></div><h3>Reglas de Meta automáticas</h3><p>Ventana de 24 horas, límites de envío y calidad del número cuidados por el sistema.</p></div>
+<div class="card"><div class="ico v"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><h3>Costos a la vista</h3><p>Plantillas enviadas por categoría y su costo estimado, todos los días.</p></div>
+<div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></div><h3>Conexión oficial</h3><p>Usamos la API oficial de WhatsApp Business de Meta en los paquetes Básico y Completo.</p></div>
+</div>
+<div class="foot"><span data-brand></span><span>14</span></div>
+</section>
+<!-- 15 Paquetes -->
+<section class="slide">
+<div class="kicker">Paquetes</div>
+<h2>Elige el paquete según el tamaño de tu equipo</h2>
+<div class="card" style="margin-top:22px;padding:8px 10px">
+<table class="pk" style="width:100%;border-collapse:collapse">
+<tr><th></th><th>Básico</th><th>Completo</th></tr>
+<tr><td>Conexión</td><td>App WhatsApp Business del celular</td><td>API oficial de Meta</td></tr>
+<tr><td>Bandeja compartida, chat, embudos, tickets y reportes</td><td class="y">Incluido</td><td class="y">Incluido</td></tr>
+<tr><td>App móvil para el equipo</td><td class="y">Incluido</td><td class="y">Incluido</td></tr>
+<tr><td>Usuarios y números conectados</td><td>Para equipos pequeños</td><td>Más usuarios y varios números</td></tr>
+<tr><td>Campañas masivas con plantillas y listas de difusión</td><td class="n">No incluido</td><td class="y">Incluido</td></tr>
+<tr><td>Grupos de WhatsApp</td><td class="n">No disponible en esta conexión</td><td class="y">Incluido*</td></tr>
+<tr><td>Precio</td><td>A cotizar</td><td>A cotizar</td></tr>
+</table>
+</div>
+<p class="note" style="margin-top:12px">Los mensajes de plantilla los cobra Meta directamente a la tarjeta de tu empresa; las respuestas dentro de la ventana de 24 horas no tienen costo. *Grupos de hasta 8 participantes con cuenta oficial de empresa.</p>
+<div class="foot"><span data-brand></span><span>15</span></div>
+</section>
+<!-- 16 Como empezar -->
+<section class="slide">
+<div class="kicker">Cómo empezar</div>
+<h2>Pruébalo 7 días gratis con tu propio equipo</h2>
+<div class="g4" style="margin-top:34px">
+<div class="card"><div class="stepn">1</div><h3>Regístrate</h3><p>Crea la cuenta de tu empresa en minutos; empieza tu prueba de 7 días.</p></div>
+<div class="card"><div class="stepn">2</div><h3>Conecta tu número</h3><p>Con el botón de Meta o con tu app WhatsApp Business.</p></div>
+<div class="card"><div class="stepn">3</div><h3>Invita a tu equipo</h3><p>Crea usuarios, sucursales, etiquetas y las etapas de tu proceso de venta.</p></div>
+<div class="card"><div class="stepn">4</div><h3>Vende y mide</h3><p>Atiende, lanza tu primera campaña y mira los resultados en tus reportes.</p></div>
+</div>
+<div class="card" style="margin-top:24px;display:flex;align-items:center;gap:18px"><span class="pill v">Siguiente fase</span><span style="font-size:16px;color:#334155">Llamadas de WhatsApp directamente desde el chat.</span></div>
+<div class="band">Al terminar la prueba eliges tu paquete y <b>sigues con todo lo que ya configuraste.</b></div>
+<div class="foot"><span data-brand></span><span>16</span></div>
+</section>
+<!-- 17 Cierre -->
+<section class="slide dark">
+<div style="height:100%;display:flex;flex-direction:column;justify-content:center;max-width:900px">
+<div class="kicker">Siguiente paso</div>
+<h1>¿Listos para vender más por WhatsApp?</h1>
+<p class="lead">Agendemos una demostración con tus números y tu proceso de venta. En 7 días verás cuántas conversaciones atiende tu equipo, qué tan rápido responde y cuánto vende cada campaña.</p>
+<div style="margin-top:34px;display:flex;gap:16px;align-items:center"><span class="cta">Prueba gratis 7 días</span><span style="font-size:17px;color:#cbd5e1" data-contact></span></div>
+</div>
+<div class="foot"><span data-brand></span><span>Gracias</span></div>
+</section>
+</div>
+<div class="ctl"><span id="cnt"></span><button id="prev" aria-label="Anterior">‹</button><button id="next" aria-label="Siguiente">›</button><button id="fs" aria-label="Pantalla completa">⤢</button></div>
+<script>
+// Nombre provisional del producto y datos de contacto: cámbialos aquí y se actualizan en todas las diapositivas.
+const MARCA = "Enlaza CRM";
+const CONTACTO = "contacto@tuempresa.com · +52 00 0000 0000";
+document.querySelectorAll("[data-brand]").forEach(e => e.textContent = MARCA);
+document.querySelectorAll("[data-contact]").forEach(e => e.textContent = CONTACTO);
+const slides = [...document.querySelectorAll(".slide")];
+let cur = 0;
+function fit(){ document.documentElement.style.setProperty("--s", Math.min(innerWidth / 1280, innerHeight / 720)); }
+function show(n){
+cur = Math.max(0, Math.min(slides.length - 1, n));
+slides.forEach((s, k) => s.classList.toggle("active", k === cur));
+document.getElementById("cnt").textContent = (cur + 1) + " / " + slides.length;
+document.getElementById("prog").style.width = ((cur + 1) / slides.length * 100) + "%";
+try { history.replaceState(null, "", "#" + (cur + 1)); } catch (e) {}
+}
+addEventListener("resize", fit);
+addEventListener("keydown", e => {
+if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); show(cur + 1); }
+if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); show(cur - 1); }
+if (e.key === "Home") show(0);
+if (e.key === "End") show(slides.length - 1);
+if (e.key === "f") toggleFs();
+});
+function toggleFs(){ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+document.getElementById("next").onclick = () => show(cur + 1);
+document.getElementById("prev").onclick = () => show(cur - 1);
+document.getElementById("fs").onclick = toggleFs;
+let x0 = null;
+addEventListener("touchstart", e => x0 = e.touches[0].clientX, {passive: true});
+addEventListener("touchend", e => { if (x0 === null) return; const d = e.changedTouches[0].clientX - x0; if (Math.abs(d) > 40) show(cur + (d < 0 ? 1 : -1)); x0 = null; });
+let hideT;
+function ui(){ document.body.classList.add("ui"); clearTimeout(hideT); hideT = setTimeout(() => document.body.classList.remove("ui"), 2200); }
+addEventListener("mousemove", ui);
+addEventListener("touchstart", ui, {passive: true});
+ui();
+fit();
+show((parseInt(location.hash.slice(1)) || 1) - 1);
+</script>
+</body>
+</html>
