@@ -63,9 +63,16 @@ function cambiaEtapa(idEmbudo, idEtapa, activo) {
     const ocupada = DB.posiciones.some(x => x.b === b.id && x.e === e.id) || (b.tipo === 'tickets' && DB.tickets.some(k => k.etapa === e.id));
     if (ocupada) return aviso(`La etapa ${e.n} tiene tarjetas: muévelas a otra etapa antes de desactivarla`);
     if (e.tipo === 'abierta' && !b.etapas.some(x => x !== e && !x.inactivo && x.tipo === 'abierta')) return aviso('Debe quedar al menos una etapa En proceso activa');
+    if (b.tipo === 'tickets' && e.tipo !== 'abierta' && !b.etapas.some(x => x !== e && !x.inactivo && x.tipo !== 'abierta')) return aviso('El embudo de tickets debe tener al menos una etapa que cierre el ticket');
   }
   e.inactivo = !activo; aviso(`Etapa ${e.n} ${activo ? 'activa' : 'inactiva'}`); return true;
 }
+// Tickets: son las tarjetas del embudo de tickets. Su estado sale de la etapa: la primera etapa activa es Pendiente (Abierto),
+// las demás etapas En proceso son En proceso, y una etapa Ganada o Perdida cierra el ticket.
+const ETK = () => DB.embudos.find(b => b.tipo === 'tickets');
+function estadoTk(k) { const b = ETK(), e = b.etapas.find(x => x.id === k.etapa); if (!e) return 'Abierto'; if (e.tipo !== 'abierta') return 'Cerrado'; return primeraActiva(b).id === e.id ? 'Abierto' : 'En proceso'; }
+const etapasCierreTk = () => ETK().etapas.filter(e => e.tipo !== 'abierta' && !e.inactivo);
+const siguienteAbiertaTk = k => { const b = ETK(), ab = b.etapas.filter(e => e.tipo === 'abierta' && !e.inactivo), i = ab.findIndex(e => e.id === k.etapa); return ab[Math.min(i + 1, ab.length - 1)] || ab[0]; };
 // Tarjetas de un contacto. Ningún embudo se asigna por defecto: si no tiene tarjetas, no está en ninguno.
 const posDe = c => DB.posiciones.filter(p => p.c === c.id);
 const chipTab = c => { const ps = posDe(c); if (!ps.length) return ''; const e = ET(ps[0].e), o = ps.slice(1); return `<span class="mini" style="--c:${e.c}" title="Embudo ${esc(TB(ps[0].b).n)}">${esc(TB(ps[0].b).n.replace('Campaña · ', ''))} · ${esc(e.n)}</span>` + (o.length ? ` <span class="mini gris" title="${esc(o.map(p => TB(p.b).n + ': ' + ET(p.e).n).join(' · '))}">+${o.length}</span>` : ''); };
@@ -213,7 +220,7 @@ function formModal(titulo, campos, cb, textoBoton = 'Guardar') {
 /* ---------- Bandeja ---------- */
 const ultimoMsg = v => [...v.msgs].reverse().find(m => m.de !== 's');
 const sinResponder = v => v.estado === 'abierta' && ultimoMsg(v)?.de === 'c';
-const ticketsAbiertosDe = v => DB.tickets.filter(k => k.conv === v.id && k.estado !== 'Cerrado').length;
+const ticketsAbiertosDe = v => DB.tickets.filter(k => k.conv === v.id && estadoTk(k) !== 'Cerrado').length;
 const usaVentana = v => N(v.numero).tipo !== 'QR';
 function convsVisibles() {
   const yo = U(E.usuario);
@@ -225,7 +232,7 @@ function convsFiltradas() {
   return convsVisibles().filter(v => {
     const c = v.contacto ? C(v.contacto) : null;
     if (E.numero !== 'todos' && v.numero !== E.numero) return false;
-    if (E.pest === 'contickets') { if (!DB.tickets.some(k => k.conv === v.id && k.estado !== 'Cerrado' && (!f.misTickets || k.asignado === E.usuario))) return false; }
+    if (E.pest === 'contickets') { if (!DB.tickets.some(k => k.conv === v.id && estadoTk(k) !== 'Cerrado' && (!f.misTickets || k.asignado === E.usuario))) return false; }
     else if (E.pest === 'cerradas' ? v.estado === 'abierta' : v.estado !== 'abierta') return false;
     if (E.pest === 'sinleer' && !v.noLeidos) return false;
     if (E.pest === 'sinresp' && !sinResponder(v)) return false;
@@ -244,7 +251,7 @@ const numFiltros = () => E.f.tags.length + ['embudo', 'etapa', 'resp', 'campana'
 
 function indicadores() {
   const vis = convsVisibles();
-  const tickets = DB.tickets.filter(k => k.estado !== 'Cerrado').length;
+  const tickets = DB.tickets.filter(k => estadoTk(k) !== 'Cerrado').length;
   const d = [['Recibidos hoy', 238, ''], ['Enviados hoy', 221, ''], ['Sin responder', vis.filter(sinResponder).length, 'rojo'], ['Tickets abiertos', tickets, 'ambar'],
     ['Marketing', '12 · $0.52', 'azul'], ['Utilidad', '185 · $1.48', 'verde'], ['Servicio', '0 · $0', 'gris']];
   return `<div class="indicadores">${d.map(x => `<div class="ind ${x[2]}"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join('')}</div>`;
@@ -262,7 +269,7 @@ function filaConv(v) {
     <div class="c-der"><small>${v.hora}</small>${v.noLeidos ? `<b class="globo">${v.noLeidos}</b>` : ''}${v.espera ? `<span class="espera">${ico('reloj')}${v.espera}</span>` : ''}<span class="resp ${r ? '' : 'nadie'}" title="${r ? esc(r.nombre) : 'Sin asignar'}">${r ? r.ini : '+'}</span></div>
   </a>`;
 }
-const ticketMasViejo = v => Math.min(...DB.tickets.filter(k => k.conv === v.id && k.estado !== 'Cerrado').map(k => k.id));
+const ticketMasViejo = v => Math.min(...DB.tickets.filter(k => k.conv === v.id && estadoTk(k) !== 'Cerrado').map(k => k.id));
 const filasConv = () => { const l = convsFiltradas(); if (E.pest === 'contickets') l.sort((a, b) => ticketMasViejo(a) - ticketMasViejo(b)); return l.length ? l.map(filaConv).join('') : '<div class="vacio">No hay conversaciones con estos filtros.<br><a data-accion="limpiar">Limpiar filtros</a></div>'; };
 
 function panelFiltros() {
@@ -358,7 +365,7 @@ function detalle(v) {
     <div class="d-sec centro"><span class="avatar grande">${iniciales(c.nombre)}</span><h4>${esc(c.nombre)}${c.especial ? ' ★' : ''}</h4><small>${c.tel}${c.correo ? ' · ' + esc(c.correo) : ''}</small><div>${chipTipo(c)}</div></div>
     <div class="d-sec"><h5>Embudos ${btn('+ Agregar a embudo', 'agregarEmbudo', 'enlace')}</h5>${posDe(c).map(p => `<div class="d-tab"><small>${esc(TB(p.b).n)}</small><div class="d-fila"><select data-cambio="etapa" data-b="${p.b}" data-id="${c.id}">${TB(p.b).etapas.filter(e => !e.inactivo || e.id === p.e).map(e => `<option value="${e.id}" ${p.e === e.id ? 'selected' : ''}>${e.n}</option>`).join('')}</select><a class="quitar" data-accion="quitarEmbudo" data-b="${p.b}" title="Quitar de este embudo">×</a></div>${p.origen === 'clave' ? `<small class="nota">Entró solo por la palabra «${esc(p.clave)}»</small>` : ''}</div>`).join('') || '<small class="nota">No está en ningún embudo. Agrégalo, o entrará solo si escribe una palabra clave de algún embudo.</small>'}</div>
     <div class="d-sec"><h5>Tags ${btn('+ Tag', 'tagModal', 'enlace')}</h5><div class="tags">${todos.length ? todos.map(t => `<span class="tag" style="--c:${TAG(t).c}">${esc(TAG(t).n)}<i data-accion="quitarTag" data-id="${t}">×</i></span>`).join('') : '<small class="nota">Sin tags</small>'}</div></div>
-    <div class="d-sec"><h5>Tickets ${puede('AS') ? btn('+ Levantar ticket', 'ticketModal', 'enlace') : ''}</h5>${tickets.length ? tickets.map(k => `<a class="d-ticket" data-accion="verTicket" data-id="${k.id}"><span>#${k.id} · ${esc(k.motivo)}</span>${estadoChip(k.estado)}</a>`).join('') : '<small class="nota">Sin tickets</small>'}</div>
+    <div class="d-sec"><h5>Tickets ${puede('AS') ? btn('+ Levantar ticket', 'ticketModal', 'enlace') : ''}</h5>${tickets.length ? tickets.map(k => `<a class="d-ticket" data-accion="verTicket" data-id="${k.id}"><span>#${k.id} · ${esc(k.motivo)}</span>${estadoChip(estadoTk(k))}</a>`).join('') : '<small class="nota">Sin tickets</small>'}</div>
     <div class="d-sec"><h5>Notas internas ${btn('+ Nota', 'notaModal', 'enlace')}</h5>${c.notas.length ? c.notas.map(n => `<div class="d-nota">${esc(n.t)}<small>${esc(U(n.por).nombre)} · ${n.f}</small></div>`).join('') : '<small class="nota">Sin notas</small>'}</div>
     <div class="d-sec"><h5>Permiso para campañas</h5><div class="d-fila">${chip(consent[0], consent[1])}${c.consent === 'sin' ? btn('Registrar que acepta', 'registrarPermiso', 'enlace') : c.consent === 'otorgado' ? btn('Quitar registro', 'quitarPermiso', 'enlace') : ''}${c.consent !== 'baja' ? btn('Dar de baja', 'baja', 'enlace rojo') : ''}</div>${textoPermiso(c)}${v.campana ? `<small class="nota">Llegó por la campaña: ${esc(DB.campanas.find(k => k.id === v.campana).nombre)}</small>` : ''}</div>`;
 }
@@ -383,6 +390,7 @@ function tarjetasDe(b) {
   return base.map(p => { const c = C(p.c); return { id: c.id, e: p.e, m: p.m, dias: p.dias, titulo: c.nombre + (c.especial ? ' ★' : ''), sub: `${tipoDe(c)} · ${c.tel}`, contacto: c.id }; });
 }
 function vEmbudo() {
+  if (!TB(E.embudo) || TB(E.embudo).tipo === 'tickets') E.embudo = (DB.embudos.find(x => x.tipo !== 'tickets') || {}).id;
   const b = TB(E.embudo) || DB.embudos[0], esTickets = b.tipo === 'tickets';
   const rg = rangoRep(E.tb), fechaDe = t => hoy0() - t.dias * DIA;
   const ts = tarjetasDe(b).filter(t => !rg || (fechaDe(t) >= rg.a && fechaDe(t) <= rg.b));
@@ -392,7 +400,7 @@ function vEmbudo() {
     return `<div class="columna" data-etapa="${e.id}"><header style="--c:${e.c}"><strong>${esc(e.n)}</strong><b>${cs.length}</b>${e.tipo !== 'abierta' ? `<small>${esTickets ? 'cierra el ticket' : { ganada: 'Ganada', perdida: 'Perdida' }[e.tipo]}</small>` : ''}${esTickets ? '' : `<span>$${suma.toLocaleString('es-MX')}</span>`}</header>
       <div class="tarjetas">${cs.map(t => `<div class="tarjeta" draggable="true" data-id="${t.id}"><strong>${esc(t.titulo)}</strong><small>${esc(t.sub)}</small><div class="t-pie"><span>${esTickets ? (t.dias ? `hace ${t.dias} d` : 'hoy') : t.m ? '$' + t.m.toLocaleString('es-MX') : '+ monto'}</span><a data-accion="${esTickets ? 'verTicket' : 'chatDe'}" data-id="${esTickets ? t.ticket : t.contacto}">${ico(esTickets ? 'ticket' : 'chat')}</a></div><select class="solo-movil" data-cambio="etapa" data-b="${b.id}" data-id="${t.id}">${b.etapas.filter(x => !x.inactivo || x.id === e.id).map(x => `<option value="${x.id}" ${x.id === e.id ? 'selected' : ''}>${x.n}</option>`).join('')}</select></div>`).join('')}</div></div>`;
   }).join('');
-  const acc = `<label class="en-linea">Embudo<select class="sel-embudo" data-cambio="embudo">${DB.embudos.map(x => `<option value="${x.id}" ${x.id === b.id ? 'selected' : ''}>${esc(x.n)}${x.inactivo ? ' · inactivo' : ''} (${tarjetasDe(x).length})</option>`).join('')}</select></label>` + filtroFechas(E.tb, 'tb', true, etFecha) + (puede('A') && !E.movil ? btn('Gestionar etapas', 'gestionarEtapas') + btn('+ Nuevo embudo', 'nuevoEmbudo', 'primario') : '');
+  const acc = `<label class="en-linea">Embudo<select class="sel-embudo" data-cambio="embudo">${DB.embudos.filter(x => x.tipo !== 'tickets').map(x => `<option value="${x.id}" ${x.id === b.id ? 'selected' : ''}>${esc(x.n)}${x.inactivo ? ' · inactivo' : ''} (${tarjetasDe(x).length})</option>`).join('')}</select></label>` + filtroFechas(E.tb, 'tb', true, etFecha) + (puede('A') && !E.movil ? btn('Gestionar etapas', 'gestionarEtapas') + btn('+ Nuevo embudo', 'nuevoEmbudo', 'primario') : '');
   const textoClaves = b.tipo === 'general' ? ` Atiende: ${b.numero ? 'solo el número ' + N(b.numero).nombre : 'todos los números'}. ${filtroTxt(b)}.` : b.tipo === 'campana' ? ` Palabras clave de la campaña: ${(b.claves || []).length ? b.claves.join(', ') : 'ninguna'}.` : b.tipo === 'general' ? ` Atiende: ${b.numero ? 'solo el número ' + N(b.numero).nombre : 'todos los números'}. Palabras clave: ${(b.claves || []).length ? b.claves.join(', ') : 'ninguna'}.` : '';
   const textoTb = textoClaves + ' ' + (rg ? `${etFecha}: del ${fCorta(rg.a)} al ${fCorta(rg.b)}` : `${etFecha}: todas las fechas`) + ` · ${ts.length} ${ts.length === 1 ? 'tarjeta' : 'tarjetas'}`;
   return pagina(`Embudo · ${esc(b.n)}`, `${esc(b.desc || 'Arrastra una tarjeta para cambiar su etapa.')} ${textoTb}`, acc, `<div class="kanban">${cols}</div>`);
@@ -415,19 +423,25 @@ function vContactos() {
 
 /* ---------- Tickets ---------- */
 function vTickets() {
-  const rg = rangoRep(E.tk), creado = k => hoy0() - k.dias * DIA;
+  const b = ETK(), rg = rangoRep(E.tk), creado = k => hoy0() - k.dias * DIA, vista = E.vistaTk || 'tablero';
   const mios = DB.tickets.filter(k => (E.rol !== 'G' || k.asignado === E.usuario) && (!rg || (creado(k) >= rg.a && creado(k) <= rg.b)));
   const textoTk = (rg ? `Creados del ${fCorta(rg.a)} al ${fCorta(rg.b)}` : 'Creados en cualquier fecha') + ` · ${mios.length} ${mios.length === 1 ? 'ticket' : 'tickets'}`;
-  const lista = mios.filter(k => k.estado === E.pestTickets);
-  const pests = ['Abierto', 'En proceso', 'Cerrado'].map(p => `<button class="${E.pestTickets === p ? 'activo' : ''}" data-accion="pestTickets" data-p="${p}">${p === 'Abierto' ? 'Pendientes' : p} <b>${mios.filter(k => k.estado === p).length}</b></button>`).join('');
-  return pagina('Tickets', `Tickets levantados desde una conversación. ${textoTk}`, filtroFechas(E.tk, 'tk', true), `<div class="pests suelta">${pests}</div><div class="rejilla">${lista.length ? lista.map(k => `<a class="carta clic" data-accion="verTicket" data-id="${k.id}"><div class="c-top"><strong>#${k.id} · ${esc(k.motivo)}</strong>${estadoChip(k.estado)}</div><p>${esc(k.desc)}</p><small>${esc(C(k.contacto).nombre)} · asignado a ${esc(U(k.asignado).nombre)} · levantado por ${esc(U(k.por).nombre)} · ${k.creado}</small></a>`).join('') : '<div class="vacio">No hay tickets en esta pestaña.</div>'}</div>`);
+  const cuenta = p => mios.filter(k => estadoTk(k) === p).length;
+  const resumen = `<div class="resumen-tk">${[['Abierto', 'Pendientes'], ['En proceso', 'En proceso'], ['Cerrado', 'Cerrados']].map(([p, et]) => `<span>${et} <b>${cuenta(p)}</b></span>`).join('')}</div>`;
+  const tarjeta = (k, e) => `<div class="tarjeta" draggable="true" data-id="${k.id}"><strong>#${k.id} · ${esc(k.motivo)}</strong><small>${esc(C(k.contacto).nombre)} · asignado a ${esc(U(k.asignado).nombre)}</small><div class="t-pie"><span>${k.dias ? `hace ${k.dias} d` : 'hoy'}</span><a data-accion="verTicket" data-id="${k.id}" title="Abrir ticket">${ico('ticket')}</a></div><select class="solo-movil" data-cambio="etapa" data-b="${b.id}" data-id="${k.id}">${b.etapas.filter(x => !x.inactivo || x.id === e.id).map(x => `<option value="${x.id}" ${x.id === e.id ? 'selected' : ''}>${x.n}</option>`).join('')}</select></div>`;
+  const tablero = `<div class="kanban">${b.etapas.filter(e => !e.inactivo).map(e => { const cs = mios.filter(k => k.etapa === e.id); return `<div class="columna" data-etapa="${e.id}"><header style="--c:${e.c}"><strong>${esc(e.n)}</strong><b>${cs.length}</b>${e.tipo !== 'abierta' ? '<small>cierra el ticket</small>' : ''}</header><div class="tarjetas">${cs.map(k => tarjeta(k, e)).join('')}</div></div>`; }).join('')}</div>`;
+  const lista = mios.filter(k => estadoTk(k) === E.pestTickets);
+  const pests = ['Abierto', 'En proceso', 'Cerrado'].map(p => `<button class="${E.pestTickets === p ? 'activo' : ''}" data-accion="pestTickets" data-p="${p}">${p === 'Abierto' ? 'Pendientes' : p} <b>${cuenta(p)}</b></button>`).join('');
+  const vLista = `<div class="pests suelta">${pests}</div><div class="rejilla">${lista.length ? lista.map(k => `<a class="carta clic" data-accion="verTicket" data-id="${k.id}"><div class="c-top"><strong>#${k.id} · ${esc(k.motivo)}</strong>${estadoChip(estadoTk(k))}</div><p>${esc(k.desc)}</p><small>Etapa ${esc(ET(k.etapa).n)} · ${esc(C(k.contacto).nombre)} · asignado a ${esc(U(k.asignado).nombre)} · levantado por ${esc(U(k.por).nombre)} · ${k.creado}</small></a>`).join('') : '<div class="vacio">No hay tickets en esta pestaña.</div>'}</div>`;
+  const acc = `<div class="chips-pl">${[['tablero', 'Tablero'], ['lista', 'Lista']].map(([v, et]) => `<button type="button" class="chip-pl ${vista === v ? 'activo' : ''}" data-accion="vistaTk" data-v="${v}">${et}</button>`).join('')}</div>` + filtroFechas(E.tk, 'tk', true, 'Creación del ticket') + (puede('A') && !E.movil ? btn('Gestionar etapas', 'etapasTk') : '');
+  return pagina('Tickets', `El embudo de tickets: cada ticket es una tarjeta y su etapa dice si está pendiente, en proceso o cerrado. ${textoTk}`, acc, (vista === 'tablero' ? resumen + tablero : vLista));
 }
 function verTicket(id) {
   const k = DB.tickets.find(x => x.id === +id);
-  const cuerpo = `<div class="d-fila">${estadoChip(k.estado)}<span class="mini" style="--c:${ET(k.etapa).c}">Etapa: ${ET(k.etapa).n}</span><span>${esc(C(k.contacto).nombre)} · asignado a <strong>${esc(U(k.asignado).nombre)}</strong></span></div><p>${esc(k.desc)}</p>
+  const cuerpo = `<div class="d-fila">${estadoChip(estadoTk(k))}<span class="mini" style="--c:${ET(k.etapa).c}">Etapa: ${ET(k.etapa).n}</span><span>${esc(C(k.contacto).nombre)} · asignado a <strong>${esc(U(k.asignado).nombre)}</strong></span></div><p>${esc(k.desc)}</p>
     <h5>Comentarios internos</h5>${k.comentarios.map(c => `<div class="d-nota">${esc(c.t)}<small>${esc(U(c.por).nombre)} · ${c.f}</small></div>`).join('') || '<small class="nota">Aún sin comentarios. El primer comentario pasa el ticket a "En proceso" y registra el tiempo de primera respuesta.</small>'}
-    ${k.estado !== 'Cerrado' ? `<label class="campo"><span>Nuevo comentario</span><textarea id="comTicket" rows="2"></textarea></label>` : ''}`;
-  const pie = btn('Ir al chat', 'chatDe', '', `data-id="${k.contacto}"`) + (k.estado !== 'Cerrado' ? btn('Comentar', 'comentarTicket', '', `data-id="${k.id}"`) + btn('Cerrar ticket', 'cerrarTicket', 'primario', `data-id="${k.id}"`) : btn('Reabrir', 'reabrirTicket', '', `data-id="${k.id}"`));
+    ${estadoTk(k) !== 'Cerrado' ? `<label class="campo"><span>Nuevo comentario</span><textarea id="comTicket" rows="2"></textarea></label>` : ''}`;
+  const pie = btn('Ir al chat', 'chatDe', '', `data-id="${k.contacto}"`) + (estadoTk(k) !== 'Cerrado' ? btn('Comentar', 'comentarTicket', '', `data-id="${k.id}"`) + btn('Cerrar ticket', 'cerrarTicket', 'primario', `data-id="${k.id}"`) : btn('Reabrir', 'reabrirTicket', '', `data-id="${k.id}"`));
   abrirModal(`Ticket #${k.id} · ${esc(k.motivo)}`, cuerpo, pie);
 }
 
@@ -466,13 +480,18 @@ function nuevaCampana() {
   abrirModal('Nueva campaña', `<form id="formCamp" class="dos">
     <div><label class="campo"><span>Nombre</span><input name="nombre" value="Promoción de octubre"></label>
     <label class="campo"><span>Número</span><select name="numero" data-cambio="numCamp">${DB.numeros.map(n => `<option value="${n.id}">${esc(n.nombre)}</option>`).join('')}</select></label>
-    <label class="campo"><span>Plantilla (solo aprobadas)</span><select name="plantilla" data-cambio="previaCamp">${aprob.map(p => `<option>${p.nombre}</option>`).join('')}</select></label>
-    <label class="campo"><span>Destinatarios</span><select name="aud"><option>Cargar CSV (celular, variable_1 … variable_10)</option><option>Segmento por tags</option><option>Lista de difusión: Clientes activos</option></select></label>
+    <label class="campo"><span>1. Plantilla (solo aprobadas)</span><select name="plantilla" data-cambio="previaCamp">${aprob.map(p => `<option>${p.nombre}</option>`).join('')}</select></label>
+    <div class="campo"><span>2. Destinatarios</span><select name="aud" data-cambio="audCamp"><option value="lista">Lista de difusión</option><option value="csv">Cargar CSV</option><option value="tags">Segmento por tags</option></select></div>
+    ${siHtml(`<label class="campo"><span>Lista</span><select name="lista" data-cambio="listaCamp">${DB.listas.map(l => `<option value="${l.id}">${esc(l.nombre)} (${l.miembros.length})</option>`).join('')}</select></label>`, 'aud', 'lista')}
+    ${siHtml(`<div class="campo"><span>Contactos que tengan alguno de estos tags</span><div class="tags-seg">${DB.gruposTags.map(g => g.tags.filter(t => !t.inactivo).map(t => `<label class="check"><input type="checkbox" name="segTag" value="${t.id}" data-cambio="segCamp" ${(campSeg || []).includes(t.id) ? 'checked' : ''}><span class="tag" style="--c:${t.c}">${esc(t.n)}</span></label>`).join('')).join('')}</div><small class="nota">Los datos salen de cada contacto: teléfono, nombre, apellido, nombre completo, correo y tipo.</small></div>`, 'aud', 'tags')}
+    ${siHtml(`<div class="campo"><span>Archivo CSV</span><div class="en-fila"><label class="btn">Subir CSV<input type="file" id="csvCamp" accept=".csv,text/csv" hidden></label>${btn('Descargar CSV de ejemplo para esta plantilla', 'csvEjemploCamp', 'enlace')}</div><small class="nota" id="csvNombre">${campDatos ? esc(campDatos.nombre) + ' · ' + campDatos.filas.length + ' filas' : 'Sin archivo. El CSV de ejemplo trae justo las columnas que pide la plantilla.'}</small></div>`, 'aud', 'csv')}
+    <div class="campo"><span>3. Datos de la plantilla</span><small class="tipo-p">Elige de qué columna sale cada variable, o pon un valor fijo igual para todos. Meta rechaza el mensaje si una variable va vacía.</small><div id="mapeoCamp"></div><small class="nota" id="cuentaCamp"></small></div>
     <label class="campo"><span>Envío</span><select name="envio" data-cambio="envioCamp"><option>Inmediato</option><option>Programar fecha y hora</option></select></label><div id="progCamp" class="oculto">${campoFecha()}</div>
     <div class="campo"><span>Embudo</span><div class="en-fila"><select name="embudo" data-cambio="embCamp">${opsEmbCamp(DB.numeros[0].id)}</select>${btn('+ Embudo', 'irTagsCamp')}</div></div><div id="filtroCamp">${infoEmbCamp(embudosCamp(DB.numeros[0].id)[0])}</div></div>
-    <div><span class="et">Vista previa</span><div class="previa" id="previaCamp">${previaPlantilla(aprob[0])}</div></div></form>`,
-    btn('Cancelar', 'descartarCamp') + btn('Revisar antes de enviar', 'revisarCamp', 'primario'), 'ancho');
+    <div><span class="et">Vista previa con datos reales</span><div class="previa" id="previaCamp"></div><div id="navCamp"></div></div></form>`,
+    btn('Cancelar', 'descartarCamp') + btn('Revisar antes de enviar', 'revisarCamp', 'primario'), 'ancho extra');
   restauraBorrador();
+  aplicarSi(); pintaCamp();
 }
 const medioPrev = (tipo, a) => a && a.medio === tipo ? (tipo === 'Foto' ? `<img class="pl-img" src="${a.url}" alt="">` : tipo === 'Video' ? `<video class="pl-img" src="${a.url}" controls muted></video>` : `<div class="pl-doc">📄 ${esc(a.nombre)}</div>`) : `<div class="pl-medio">${esc(tipo)}</div>`;
 const previaPlantilla = p => `<div class="pl-prev"><div class="msg mio">${!p.tarjetas && p.encTipo && p.encTipo !== 'Ninguno' && p.encTipo !== 'Texto' ? (p.encTipo === 'Ubicación' ? '<div class="pl-medio">Ubicación</div>' : medioPrev(p.encTipo, p.archivo)) : ''}${p.encabezado ? `<strong class="pl-enc">${esc(p.encabezado)}</strong>` : ''}${p.oferta ? `<div class="pl-oferta"><b>${esc(p.oferta)}</b>${p.vence ? '<small>Vence en 2 días</small>' : ''}${p.codigo ? `<small>Código: ${esc(p.codigo)}</small>` : ''}</div>` : ''}<div>${esc(p.cuerpo)}</div>${p.pie ? `<small class="pl-pie">${esc(p.pie)}</small>` : ''}${(p.botones || []).map(b => `<div class="b-boton">${esc(b)}</div>`).join('')}</div>${p.tarjetas ? `<div class="pl-cards">${p.tarjetas.map(t => `<div class="pl-card">${medioPrev(p.encTipo || 'Foto', t.archivo)}<div>${esc(t.texto)}</div>${t.botones.map(b => `<div class="b-boton">${esc(b)}</div>`).join('')}</div>`).join('')}</div>` : ''}</div>`;
@@ -495,6 +514,88 @@ function restauraBorrador() {
   const pon = (n, ev) => { if (f.elements[n] && b[n] != null && [...(f.elements[n].options || [{ value: b[n] }])].some(o => o.value === b[n] || o.text === b[n])) { f.elements[n].value = b[n]; if (ev) f.elements[n].dispatchEvent(new Event('change', { bubbles: true })); } };
   pon('nombre'); pon('numero', true); pon('plantilla', true); pon('embudo', true); pon('aud'); pon('envio', true); if (f.elements.cuando && b.cuando) f.elements.cuando.value = b.cuando;
 }
+/* ---------- Campaña: variables de la plantilla y datos de los destinatarios ----------
+   Meta pide al enviar un valor para cada variable de la plantilla, y rechaza el mensaje si alguna va vacía.
+   1) Se elige la plantilla: de ahí salen sus variables (encabezado, cuerpo, final de enlaces, tarjetas, código).
+   2) Se eligen los destinatarios: una lista de difusión o un CSV. Sus columnas son los datos disponibles.
+   3) Emparejado: cada variable se toma de una columna, o lleva un valor fijo igual para todos.
+   4) La vista previa muestra una fila real, con flechas para recorrerlas, y la revisión cuenta quién queda fuera. */
+let campDatos = null, campMapeo = {}, campFila = 0, campArchivo = null, campSeg = [];
+const plCamp = () => { const f = $('#formCamp'); if (!f) return null; return plantillasDe(f.elements.numero.value).find(p => p.nombre === f.elements.plantilla.value) || null; };
+// Variables que pide la plantilla al enviarse, con su clave de envío y un nombre de columna sugerido.
+function varsCamp(p) {
+  if (!p) return [];
+  const v = [], ej = p.ejemplos || {};
+  varsDe(p.encabezado).forEach(k => v.push({ key: 'h_' + k, et: 'Encabezado {{' + k + '}}', col: 'encabezado_' + k, ej: (ej.h || {})[k] }));
+  if (esAuth(p)) v.push({ key: 'b_1', et: 'Código de verificación', col: 'codigo_verificacion', ej: '483920' });
+  else varsDe(p.cuerpo).forEach(k => v.push({ key: 'b_' + k, et: 'Cuerpo {{' + k + '}}', col: 'cuerpo_' + k, ej: (ej.b || {})[k] }));
+  if (p.btnVars && p.btnVars.length) p.btnVars.forEach(x => v.push({ key: 'u_' + x.index, et: 'Final del enlace «' + x.texto + '» (índice ' + x.index + ')', col: 'enlace_' + x.index, ej: x.ej }));
+  else if (p.urlVar) v.push({ key: 'u', et: 'Final del enlace «' + btnUrl(p) + '»', col: 'enlace', ej: ej.u });
+  (p.tarjetas || []).forEach((t, i) => { varsDe(t.texto).forEach(k => v.push({ key: 'c' + i + '_' + k, et: 'Tarjeta ' + (i + 1) + ' {{' + k + '}}', col: 'tarjeta' + (i + 1) + '_' + k, ej: ((ej.c || [])[i] || {})[k] })); (t.btnVars || []).forEach(x => v.push({ key: 'c' + i + '_u' + x.index, et: 'Tarjeta ' + (i + 1) + ': final del enlace «' + x.texto + '»', col: 'tarjeta' + (i + 1) + '_enlace', ej: x.ej })); });
+  if (p.codigo) v.push({ key: 'codigo', et: 'Código del cupón', col: 'codigo', ej: p.codigo });
+  return v;
+}
+// Filas y columnas de los destinatarios elegidos.
+function datosDestinatarios() {
+  const f = $('#formCamp'); if (!f) return { columnas: [], filas: [] };
+  if (f.elements.aud.value === 'csv') return campDatos || { columnas: [], filas: [] };
+  if (f.elements.aud.value === 'tags') { const cs = DB.contactos.filter(c => c.tags.some(t => (campSeg || []).includes(t))); return { columnas: ['telefono', 'nombre', 'apellido', 'nombre_completo', 'correo', 'tipo'], filas: cs.map(c => { const [n, ...a] = c.nombre.split(' '); return { telefono: c.tel, nombre: n, apellido: a.join(' '), nombre_completo: c.nombre, correo: c.correo || '', tipo: c.tipo || '' }; }) }; }
+  const l = DB.listas.find(x => x.id === f.elements.lista.value); if (!l) return { columnas: [], filas: [] };
+  return { columnas: ['telefono', 'nombre', 'apellido', 'tipo'], filas: l.miembros.map(m => ({ telefono: m.tel, nombre: m.nombre, apellido: m.apellido || '', tipo: m.tipo || '' })) };
+}
+const sugerirCol = (v, cols) => cols.find(c => c.toLowerCase() === v.col) || (v.key === 'b_1' && cols.includes('nombre') && !esAuth(plCamp() || {}) ? 'nombre' : '');
+function leeCsv(texto) {
+  const lineas = texto.replace(/^﻿/, '').split(/\r?\n/).filter(x => x.trim());
+  const parte = l => { const out = []; let cur = '', q = false; for (const ch of l) { if (ch === '"') q = !q; else if (ch === ',' && !q) { out.push(cur.trim()); cur = ''; } else cur += ch; } out.push(cur.trim()); return out; };
+  const cab = parte(lineas[0] || '').map(x => x.toLowerCase());
+  return { columnas: cab, filas: lineas.slice(1).map(l => { const v = parte(l); return Object.fromEntries(cab.map((c, i) => [c, v[i] || ''])); }) };
+}
+// Valores de las variables para una fila, según el emparejado.
+function valoresFila(fila, vars) { return Object.fromEntries(vars.map(v => { const m = campMapeo[v.key] || {}; return [v.key, m.fijo ? (m.valor || '') : ((fila || {})[m.col] || '')]; })); }
+const colTel = () => (campMapeo._tel || {}).col || 'telefono';
+function evaluarCamp() {
+  const p = plCamp(), vars = varsCamp(p), d = datosDestinatarios(), vistos = new Set(), r = { total: d.filas.length, invalidos: 0, repetidos: 0, bajas: 0, vacias: 0, final: 0 };
+  const bajas = new Set(DB.bajas.map(b => soloDig(b.tel)));
+  d.filas.forEach(f => {
+    const tel = soloDig(f[colTel()] || ''), conLada = tel.length === 10 ? '52' + tel : tel;
+    if (conLada.length < 11 || conLada.length > 15) return r.invalidos++;
+    if (vistos.has(conLada)) return r.repetidos++; vistos.add(conLada);
+    if (bajas.has(tel) || bajas.has(conLada)) return r.bajas++;
+    const vals = valoresFila(f, vars); if (vars.some(v => !(vals[v.key] || '').trim())) return r.vacias++;
+    r.final++;
+  });
+  return r;
+}
+function mapeoHtml() {
+  const p = plCamp(), vars = varsCamp(p), d = datosDestinatarios(), cols = d.columnas;
+  if (!campMapeo._tel) campMapeo._tel = { col: cols.find(c => /^(telefono|teléfono|tel|celular|whatsapp)$/.test(c)) || '' };
+  vars.forEach(v => { if (!campMapeo[v.key]) campMapeo[v.key] = { col: sugerirCol(v, cols) }; });
+  const ops = (sel, extraFijo) => `<option value="">Elige una columna</option>${cols.map(c => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('')}${extraFijo ? `<option value="__fijo" ${extraFijo === 'sel' ? 'selected' : ''}>Valor fijo (igual para todos)</option>` : ''}`;
+  const filas = vars.map(v => { const m = campMapeo[v.key]; return `<div class="map-fila"><span class="map-var">${esc(v.et)}</span><select name="map_${v.key}">${ops(m.fijo ? '' : m.col, m.fijo ? 'sel' : 'si')}</select>${m.fijo ? `<input name="fijo_${v.key}" value="${esc(m.valor || '')}" placeholder="${v.ej ? 'Ej. ' + esc(v.ej) : 'Valor para todos'}">` : ''}</div>`; }).join('');
+  const sinVars = !vars.length ? '<p class="nota">Esta plantilla no tiene variables: todos reciben el mismo mensaje.</p>' : '';
+  const medio = p && !p.tarjetas && ['Foto', 'Video', 'Documento'].includes(p.encTipo) ? `<div class="map-fila"><span class="map-var">${esc(p.encTipo)} del encabezado (igual para todos)</span><label class="btn">Subir archivo<input type="file" id="medioCamp" hidden></label><small class="nota">${campArchivo ? esc(campArchivo.nombre) : 'Sin archivo'}</small></div>` : '';
+  const vence = p && p.oferta && p.vence ? `<div class="map-fila"><span class="map-var">La oferta vence el (igual para todos)</span><input type="datetime-local" name="venceCamp" value="${aLocal(new Date(Date.now() + 2 * DIA))}"></div>` : '';
+  return `<div class="map-fila"><span class="map-var">Teléfono del destinatario *</span><select name="map__tel">${ops(campMapeo._tel.col)}</select></div>${filas}${medio}${vence}${sinVars}${!cols.length ? '<p class="nota">Elige una lista o sube el CSV para emparejar las columnas.</p>' : ''}`;
+}
+function pintaCamp() {
+  const p = plCamp(), w = $('#mapeoCamp'), pv = $('#previaCamp'); if (!w || !pv) return;
+  w.innerHTML = mapeoHtml();
+  const d = datosDestinatarios(), vars = varsCamp(p); campFila = Math.max(0, Math.min(campFila, d.filas.length - 1));
+  if (!p) { pv.innerHTML = '<p class="nota">Este número no tiene plantillas aprobadas.</p>'; $('#navCamp').innerHTML = ''; return; }
+  const fila = d.filas[campFila], vals = valoresFila(fila, vars);
+  const vacia = t => (t || '').replace(/\{\{(\w+)\}\}/g, '[vacío]');
+  const q = { ...p, archivo: campArchivo || p.archivo, encabezado: vacia(llenar(p.encabezado, 'h_', vals)), cuerpo: vacia(llenar(p.cuerpo, 'b_', vals)), codigo: vals.codigo || p.codigo, tarjetas: p.tarjetas ? p.tarjetas.map((t, i) => ({ ...t, texto: vacia(llenar(t.texto, 'c' + i + '_', vals)) })) : undefined };
+  pv.innerHTML = previaPlantilla(q);
+  const faltan = vars.filter(v => !(vals[v.key] || '').trim());
+  $('#navCamp').innerHTML = d.filas.length ? `<div class="nav-fila">${btn('‹', 'filaCamp', 'icono-bt', `data-d="-1" ${campFila === 0 ? 'disabled' : ''}`)}<span>Fila ${campFila + 1} de ${d.filas.length}: <b>${esc([fila.nombre, fila.apellido].filter(Boolean).join(' ') || fila[colTel()] || '')}</b> · ${esc(fila[colTel()] || 'sin teléfono')}</span>${btn('›', 'filaCamp', 'icono-bt', `data-d="1" ${campFila >= d.filas.length - 1 ? 'disabled' : ''}`)}</div>${faltan.length ? `<small class="rojo">Esta fila no tiene ${faltan.map(v => v.et).join(', ')}: se excluye, porque Meta rechaza una variable vacía.</small>` : '<small class="nota">Así le llega a este destinatario.</small>'}` : '<small class="nota">La vista previa muestra los datos reales cuando eliges los destinatarios.</small>';
+  const r = evaluarCamp(); $('#cuentaCamp').innerHTML = d.filas.length ? `${r.final} de ${r.total} destinatarios listos${r.total - r.final ? ` · ${r.total - r.final} se excluyen (ver revisión)` : ''}` : '';
+}
+function csvEjemploCamp() {
+  const p = plCamp(); if (!p) return aviso('Elige una plantilla');
+  const vars = varsCamp(p), cab = ['telefono', 'nombre', 'apellido', ...vars.map(v => v.col)], fila = ['8155501234', 'María', 'López', ...vars.map(v => v.ej || 'ejemplo')];
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + cab.join(',') + '\n' + fila.map(x => /[,"]/.test(x) ? '"' + String(x).replace(/"/g, '""') + '"' : x).join(',') + '\n'], { type: 'text/csv;charset=utf-8' })); a.download = 'campana-' + p.nombre + '.csv'; a.click();
+  aviso('CSV de ejemplo descargado con las columnas que pide ' + p.nombre + ': ' + cab.join(', '));
+}
 let campPendiente = null;
 function revisarCamp() {
   const f = new FormData($('#formCamp'));
@@ -502,10 +603,18 @@ function revisarCamp() {
   guardaBorrador();
   const programada = f.get('envio').startsWith('Programar'), cuando = programada ? fechaValida(f.get('cuando')) : null;
   if (programada && !cuando) return;
-  campPendiente = { nombre: f.get('nombre') || 'Campaña sin nombre', plantilla: f.get('plantilla'), numero: f.get('numero'), programada, cuando, embudo: f.get('embudo') };
+  const pl = plCamp(); if (!pl) return aviso('Elige una plantilla aprobada');
+  const vars = varsCamp(pl), d = datosDestinatarios();
+  if (!d.filas.length) return aviso(f.get('aud') === 'csv' ? 'Sube el CSV de destinatarios' : f.get('aud') === 'tags' ? 'Elige al menos un tag con contactos' : 'La lista no tiene contactos');
+  if (!(campMapeo._tel || {}).col) return aviso('Elige la columna del teléfono');
+  const sinMapa = vars.find(v => { const m = campMapeo[v.key] || {}; return m.fijo ? !(m.valor || '').trim() : !m.col; }); if (sinMapa) return aviso('Falta decir de dónde sale: ' + sinMapa.et);
+  if (!pl.tarjetas && ['Foto', 'Video', 'Documento'].includes(pl.encTipo) && !campArchivo) return aviso('Sube el archivo del encabezado');
+  const r = evaluarCamp(); if (!r.final) return aviso('Ningún destinatario queda listo: revisa el emparejado de columnas');
+  const precio = { Marketing: 0.0436, Utilidad: 0.0080, 'Autenticación': 0.0080 }[pl.cat] || 0.0436;
+  campPendiente = { nombre: f.get('nombre') || 'Campaña sin nombre', plantilla: f.get('plantilla'), numero: f.get('numero'), programada, cuando, embudo: f.get('embudo'), total: r.final, mapeo: JSON.parse(JSON.stringify(campMapeo)), fuente: f.get('aud') === 'csv' ? 'CSV ' + (campDatos ? campDatos.nombre : '') : f.get('aud') === 'tags' ? 'Segmento por tags: ' + campSeg.map(t => TAG(t).n).join(', ') : 'Lista ' + (DB.listas.find(x => x.id === f.get('lista')) || {}).nombre, r, precio, cat: pl.cat };
   abrirModal('Revisión antes de enviar', `<p>El sistema limpia la audiencia y respeta el límite diario de Meta.</p>
-    <div class="resumen"><div><small>Cargados</small><strong>560</strong></div><div class="rojo"><small>Bajas excluidas</small><strong>14</strong></div><div class="ambar"><small>Duplicados</small><strong>21</strong></div><div class="ambar"><small>Números inválidos</small><strong>5</strong></div><div class="verde"><small>Se enviará a</small><strong>520</strong></div></div>
-    <div class="d-fila"><span>Costo estimado (Marketing, 520 × US$0.0436)</span><strong>US$22.67</strong></div>
+    <div class="resumen"><div><small>Cargados</small><strong>${campPendiente.r.total}</strong></div><div class="rojo"><small>Bajas excluidas</small><strong>${campPendiente.r.bajas}</strong></div><div class="ambar"><small>Repetidos</small><strong>${campPendiente.r.repetidos}</strong></div><div class="ambar"><small>Teléfono inválido</small><strong>${campPendiente.r.invalidos}</strong></div><div class="ambar"><small>Variable vacía</small><strong>${campPendiente.r.vacias}</strong></div><div class="verde"><small>Se enviará a</small><strong>${campPendiente.r.final}</strong></div></div><div class="d-fila"><span>Destinatarios</span><strong>${esc(campPendiente.fuente)}</strong></div>
+    <div class="d-fila"><span>Costo estimado (${campPendiente.cat}, ${campPendiente.r.final} × US$${campPendiente.precio})</span><strong>US$${(campPendiente.r.final * campPendiente.precio).toFixed(2)}</strong></div>
     <div class="d-fila"><span>Cupo disponible hoy</span><strong>1,480 de 2,000</strong></div>
     ${campPendiente.programada ? `<div class="d-fila"><span>Se enviará</span><strong>${fechaTxt(campPendiente.cuando)} · hora de Ciudad de México</strong></div>` : ''}
     <div class="d-fila"><span>Embudo</span><strong>${esc(TB(campPendiente.embudo).n)}</strong></div>
@@ -513,8 +622,8 @@ function revisarCamp() {
     btn('Regresar', 'nuevaCampana') + btn(campPendiente.programada ? 'Programar campaña' : 'Enviar ahora', 'confirmarCamp', 'primario'));
 }
 function confirmarCamp() {
-  const k = { id: 'k' + Date.now(), tipo: 'Envío', ...campPendiente, estado: campPendiente.programada ? 'Programada' : 'Enviando', fecha: campPendiente.programada ? fechaTxt(campPendiente.cuando) : 'hoy ' + ahora(), total: 520, enviados: 0, entregados: 0, leidos: 0, respuestas: 0, clics: 0, bajas: 0, conversiones: 0, errores: 0 };
-  DB.campanas.unshift(k); campBorrador = null; cerrarModal(); render();
+  const k = { id: 'k' + Date.now(), tipo: 'Envío', ...campPendiente, estado: campPendiente.programada ? 'Programada' : 'Enviando', fecha: campPendiente.programada ? fechaTxt(campPendiente.cuando) : 'hoy ' + ahora(), total: campPendiente.total || 0, enviados: 0, entregados: 0, leidos: 0, respuestas: 0, clics: 0, bajas: 0, conversiones: 0, errores: 0 };
+  DB.campanas.unshift(k); campBorrador = null; campDatos = null; campMapeo = {}; campArchivo = null; campFila = 0; campSeg = []; cerrarModal(); render();
   if (k.estado === 'Programada') return aviso('Campaña programada para ' + k.fecha);
   aviso('Envío iniciado: se envía por lotes');
   const t = setInterval(() => {
@@ -616,11 +725,11 @@ function cartaEmbudo(rg) {
 function seccionTickets(rg) {
   const creado = k => hoy0() - k.dias * DIA;
   const ts = DB.tickets.filter(k => creado(k) >= rg.a && creado(k) <= rg.b && enNumero(k.conv) && (E.rol !== 'G' || k.asignado === E.usuario));
-  const abiertos = ts.filter(k => k.estado !== 'Cerrado'), cerrados = ts.filter(k => k.estado === 'Cerrado');
+  const abiertos = ts.filter(k => estadoTk(k) !== 'Cerrado'), cerrados = ts.filter(k => estadoTk(k) === 'Cerrado');
   const prim = promedio(ts.filter(k => k.primera).map(k => k.primera / 60)), cie = promedio(cerrados.filter(k => k.cierreH).map(k => k.cierreH));
   const kp = [['Levantados', ts.length], ['Siguen abiertos', abiertos.length], ['Cerrados', cerrados.length], ['Primera respuesta promedio', prim === null ? '—' : hFmt(prim)], ['Tiempo promedio de cierre', cie === null ? '—' : hFmt(cie)]];
-  const agentes = [...new Set(ts.map(k => k.asignado))].map(id => { const m = ts.filter(k => k.asignado === id), p = promedio(m.filter(k => k.primera).map(k => k.primera / 60)), c = promedio(m.filter(k => k.estado === 'Cerrado' && k.cierreH).map(k => k.cierreH)); return { c: [esc(U(id).nombre), m.length, m.filter(k => k.estado !== 'Cerrado').length, m.filter(k => k.estado === 'Cerrado').length, p === null ? '—' : hFmt(p), c === null ? '—' : hFmt(c)] }; });
-  const motivos = [...new Set(ts.map(k => k.motivo))].map(mo => ({ c: [esc(mo), ts.filter(k => k.motivo === mo).length, ts.filter(k => k.motivo === mo && k.estado !== 'Cerrado').length] }));
+  const agentes = [...new Set(ts.map(k => k.asignado))].map(id => { const m = ts.filter(k => k.asignado === id), p = promedio(m.filter(k => k.primera).map(k => k.primera / 60)), c = promedio(m.filter(k => estadoTk(k) === 'Cerrado' && k.cierreH).map(k => k.cierreH)); return { c: [esc(U(id).nombre), m.length, m.filter(k => estadoTk(k) !== 'Cerrado').length, m.filter(k => estadoTk(k) === 'Cerrado').length, p === null ? '—' : hFmt(p), c === null ? '—' : hFmt(c)] }; });
+  const motivos = [...new Set(ts.map(k => k.motivo))].map(mo => ({ c: [esc(mo), ts.filter(k => k.motivo === mo).length, ts.filter(k => k.motivo === mo && estadoTk(k) !== 'Cerrado').length] }));
   return `<h3 class="sub">Resultados de tickets</h3><div class="indicadores suelta">${kp.map(k => `<div class="ind"><small>${k[0]}</small><strong>${k[1]}</strong></div>`).join('')}</div>
     ${ts.length ? `<div class="rejilla dos"><div>${tabla(['Asignado a', 'Tickets', 'Abiertos', 'Cerrados', 'Primera respuesta', 'Cierre'], agentes)}</div><div>${tabla(['Motivo', 'Tickets', 'Abiertos'], motivos)}</div></div>` : '<p class="nota">No hay tickets levantados en este rango.</p>'}`;
 }
@@ -1029,7 +1138,7 @@ function modalEnviarPl(id, prueba) {
   if (p.codigo) f += inp('Código que se copia', 'codigo', 'Código de cupón de hasta ' + (p.oferta ? 15 : 20) + ' caracteres', '', `maxlength="${p.oferta ? 15 : 20}" placeholder="Ejemplo: ${esc(p.codigo)}"`);
   if (p.btnVars && p.btnVars.length) p.btnVars.forEach(x => { f += inp('Final del enlace del botón «' + x.texto + '» (índice ' + x.index + ')', 'u_' + x.index, 'Texto que se agrega al final del enlace; sin espacios', '', x.ej ? 'placeholder="Ejemplo: ' + esc(x.ej) + '"' : ''); });
   else if (p.urlVar) f += inp('Final del enlace del botón «' + btnUrl(p) + '»', 'u', 'Texto que se agrega al final del enlace; sin espacios', '', ejDe(p, 'u'));
-  (p.tarjetas || []).forEach((t, i) => { f += `<div class="f-grupo"><h4>Tarjeta ${i + 1}</h4>${arch((p.encTipo || 'Foto') + ' de la tarjeta (índice ' + i + ')', 'c' + i + '_medio', medioTipo[p.encTipo || 'Foto'], p.encTipo || 'Foto')}${varsDe(t.texto).map(k => inp('Variable {{' + k + '}} de la tarjeta ' + (i + 1), 'c' + i + '_' + k, 'Texto', '', ejDe(p, 'c', k, i))).join('')}${(t.btnVars || []).map(x => inp('Final del enlace del botón «' + x.texto + '» (índice ' + x.index + ')', 'c' + i + '_u' + x.index, 'Texto que se agrega al final del enlace', '', x.ej ? 'placeholder="Ejemplo: ' + esc(x.ej) + '"' : '')).join('')}</div>`; });
+  (p.tarjetas || []).forEach((t, i) => { f += `<div class="f-grupo"><h4>Tarjeta ${i + 1} · índice ${i}</h4>${arch((p.encTipo || 'Foto') + ' de la tarjeta (índice ' + i + ')', 'c' + i + '_medio', medioTipo[p.encTipo || 'Foto'], p.encTipo || 'Foto')}${varsDe(t.texto).map(k => inp('Variable {{' + k + '}} de la tarjeta ' + (i + 1) + ' (índice ' + i + ')', 'c' + i + '_' + k, 'Texto', '', ejDe(p, 'c', k, i))).join('')}${(t.btnVars || []).map(x => inp('Tarjeta ' + (i + 1) + ': final del enlace del botón «' + x.texto + '» (botón índice ' + x.index + ')', 'c' + i + '_u' + x.index, 'Texto que se agrega al final del enlace', '', x.ej ? 'placeholder="Ejemplo: ' + esc(x.ej) + '"' : '')).join('')}</div>`; });
   const titulo = (prueba ? 'Probar plantilla · ' : 'Enviar plantilla · ') + esc(p.nombre);
   const nota = prueba ? 'Llena los datos que esta plantilla necesita. Meta rechaza una plantilla a la que le falta un dato, así que el botón se activa cuando están todos.' : 'Llena los datos de esta plantilla. Meta rechaza una plantilla a la que le falta un dato, así que el botón de enviar se activa cuando están todos.';
   abrirModal(titulo, `<form id="formEnv" class="dos"><div><p class="nota">${nota}</p>${f || '<p>Esta plantilla no tiene datos por llenar.</p>'}</div><div><span class="et">${prueba ? 'Así llegará el mensaje' : 'Así lo recibirá ' + (c ? esc(c.nombre.split(' ')[0]) : 'el grupo')}</span><div class="previa" id="previaEnv"></div><p class="nota" id="faltanEnv"></p>${prueba ? '<details class="nota"><summary>Datos que se mandan a Meta</summary><pre class="json-pl" id="jsonEnv"></pre></details><p class="nota">Es una prueba: el prototipo no envía nada. Ya programado, este botón manda la plantilla al número de destino y se cobra como cualquier envío de su categoría.</p>' : ''}</div></form>`,
@@ -1041,7 +1150,7 @@ const idiomaMeta = t => (IDIOMAS_PL.find(x => x[0] === t) || [0, 'es_MX'])[1];
 const paramTxt = (k, texto) => isNaN(k) ? { type: 'text', parameter_name: k, text: texto } : { type: 'text', text: texto };
 function cargaMeta(p, vals) {
   const comp = [], medio = { Foto: 'image', Video: 'video', Documento: 'document' }, liga = t => ({ link: 'https://archivos.ejemplo/plantillas/' + p.nombre + '.' + ({ image: 'jpg', video: 'mp4', document: 'pdf' }[t]) });
-  if (!p.tarjetas && medio[p.encTipo]) { const t = medio[p.encTipo]; comp.push({ type: 'header', parameters: [{ type: t, [t]: t === 'document' ? { ...liga(t), filename: p.nombre + '.pdf' } : liga(t) }] }); }
+  if (!p.tarjetas && medio[p.encTipo]) { const t = medio[p.encTipo]; const fh = vals.hMedio && vals.hMedio.name; comp.push({ type: 'header', parameters: [{ type: t, [t]: fh ? { link: '<' + fh + ' subido>' , ...(t === 'document' ? { filename: fh } : {}) } : (t === 'document' ? { ...liga(t), filename: p.nombre + '.pdf' } : liga(t)) }] }); }
   if (p.encTipo === 'Ubicación') comp.push({ type: 'header', parameters: [{ type: 'location', location: { latitude: vals.lat || '', longitude: vals.lng || '', name: vals.lugar || '', address: vals.direccion || '' } }] });
   if (varsDe(p.encabezado).length) comp.push({ type: 'header', parameters: varsDe(p.encabezado).map(k => paramTxt(k, vals['h_' + k] || '')) });
   if (varsDe(p.cuerpo).length) comp.push({ type: 'body', parameters: varsDe(p.cuerpo).map(k => paramTxt(k, vals['b_' + k] || '')) });
@@ -1051,7 +1160,7 @@ function cargaMeta(p, vals) {
   if (p.btnVars && p.btnVars.length) p.btnVars.forEach(x => comp.push({ type: 'button', sub_type: 'url', index: x.index, parameters: [{ type: 'text', text: vals['u_' + x.index] || '' }] }));
   else if (p.urlVar && bi('↗') >= 0) comp.push({ type: 'button', sub_type: 'url', index: bi('↗'), parameters: [{ type: 'text', text: vals.u || '' }] });
   if (esAuth(p)) { const k = varsDe(p.cuerpo)[0]; comp.push({ type: 'button', sub_type: 'url', index: 0, parameters: [{ type: 'text', text: vals['b_' + k] || '' }] }); }
-  if (p.tarjetas) comp.push({ type: 'carousel', cards: p.tarjetas.map((t, i) => { const tm = medio[p.encTipo || 'Foto'], cc = [{ type: 'header', parameters: [{ type: tm, [tm]: liga(tm) }] }]; if (varsDe(t.texto).length) cc.push({ type: 'body', parameters: varsDe(t.texto).map(k => paramTxt(k, vals['c' + i + '_' + k] || '')) }); (t.btnVars || []).forEach(x => cc.push({ type: 'button', sub_type: 'url', index: x.index, parameters: [{ type: 'text', text: vals['c' + i + '_u' + x.index] || '' }] })); return { card_index: i, components: cc }; }) });
+  if (p.tarjetas) comp.push({ type: 'carousel', cards: p.tarjetas.map((t, i) => { const tm = medio[p.encTipo || 'Foto'], fc = vals['c' + i + '_medio'] && vals['c' + i + '_medio'].name, cc = [{ type: 'header', parameters: [{ type: tm, [tm]: fc ? { link: '<' + fc + ' subido>' } : liga(tm) }] }]; if (varsDe(t.texto).length) cc.push({ type: 'body', parameters: varsDe(t.texto).map(k => paramTxt(k, vals['c' + i + '_' + k] || '')) }); (t.btnVars || []).forEach(x => cc.push({ type: 'button', sub_type: 'url', index: x.index, parameters: [{ type: 'text', text: vals['c' + i + '_u' + x.index] || '' }] })); return { card_index: i, components: cc }; }) });
   return { messaging_product: 'whatsapp', recipient_type: 'individual', to: soloDig(vals.destino || ''), type: 'template', template: { name: p.nombre, language: { code: idiomaMeta(p.idioma) }, components: comp } };
 }
 const destinoValido = d => { const x = soloDig(d || ''); return /^\s*\+/.test(d || '') && x.length >= 8 && x.length <= 15; };
@@ -1181,12 +1290,12 @@ function cartaTipos() {
 function vTags() {
   return pagina('Tags y embudos', 'Un tag es una etiqueta que el contacto carga; una etapa es el paso en el que va dentro de un embudo', btn('+ Grupo de tags', 'nuevoGrupo') + btn('+ Nuevo embudo', 'nuevoEmbudo', 'primario'), `<div class="rejilla dos">
     <div class="carta"><h3>Grupos de tags</h3>${DB.gruposTags.map(g => `<div class="f-grupo"><h4>${esc(g.nombre)} ${btn('+ Tag', 'nuevoTag', 'enlace', `data-id="${g.id}"`)}</h4><div class="tags">${g.tags.map(t => `<span class="tag-fila ${t.inactivo ? 'fila-inactiva' : ''}"><a class="tag" style="--c:${t.c}" data-accion="editarTag" data-id="${t.id}" title="Editar tag">${esc(t.n)}</a>${swEstado('tagActivo', `data-id="${t.id}"`, !t.inactivo)}</span>`).join('')}</div></div>`).join('')}<p class="nota">El interruptor activa o desactiva el tag sin entrar a editarlo. Un tag inactivo ya no se puede poner; los contactos que lo tienen lo conservan.</p></div>
-    <div class="carta"><h3>Embudos y sus etapas</h3><p class="nota">El interruptor activa o desactiva el embudo sin entrar a editarlo.</p>${DB.embudos.map(b => `<div class="f-grupo"><h4 class="emb-cab"><span>${esc(b.n)} ${chip({ general: 'General', tickets: 'Tickets', campana: 'Campaña' }[b.tipo], 'gris')}${b.inactivo ? ' ' + chip('Inactivo', 'rojo') : ''}</span><span>${swEstado('embudoActivo', `data-id="${b.id}"`, !b.inactivo)}${btn('Editar', 'editarEmbudo', 'enlace', `data-id="${b.id}"`)}${btn('Etapas', 'abrirEtapas', 'enlace', `data-id="${b.id}"`)}</span></h4><div class="tags">${b.etapas.map(e => `<span class="mini ${e.inactivo ? 'inactiva' : ''}" style="--c:${e.c}">${esc(e.n)}${e.tipo === 'ganada' ? ' ✓' : e.tipo === 'perdida' ? ' ✕' : ''}${e.inactivo ? ' · inactiva' : ''}</span>`).join('')}</div>${b.tipo === 'general' ? `<small class="nota">${esc(filtroTxt(b))}</small>` : b.tipo === 'campana' ? `<small class="nota">Palabras clave: ${(b.claves || []).length ? esc(b.claves.join(', ')) : 'ninguna'}</small>` : ''}</div>`).join('')}<p class="nota">✓ resultado Ganada · ✕ resultado Perdida · sin marca, En proceso. Los embudos de campaña se crean solos y se archivan al terminar la campaña.</p></div>${cartaTipos()}</div>`);
+    <div class="carta"><h3>Embudos y sus etapas</h3><p class="nota">El interruptor activa o desactiva el embudo sin entrar a editarlo.</p>${DB.embudos.map(b => `<div class="f-grupo"><h4 class="emb-cab"><span>${esc(b.n)} ${chip({ general: 'General', tickets: 'Tickets', campana: 'Campaña' }[b.tipo], 'gris')}${b.inactivo ? ' ' + chip('Inactivo', 'rojo') : ''}</span><span>${b.tipo === 'tickets' ? '<small class="nota" title="El embudo de tickets no se puede desactivar ni borrar">Siempre activo</small>' : swEstado('embudoActivo', `data-id="${b.id}"`, !b.inactivo)}${btn('Editar', 'editarEmbudo', 'enlace', `data-id="${b.id}"`)}${btn('Etapas', 'abrirEtapas', 'enlace', `data-id="${b.id}"`)}${b.tipo === 'general' ? btn('Eliminar', 'eliminarEmbudo', 'enlace rojo', `data-id="${b.id}"`) : ''}</span></h4><div class="tags">${b.etapas.map(e => `<span class="mini ${e.inactivo ? 'inactiva' : ''}" style="--c:${e.c}">${esc(e.n)}${e.tipo === 'ganada' ? ' ✓' : e.tipo === 'perdida' ? ' ✕' : ''}${e.inactivo ? ' · inactiva' : ''}</span>`).join('')}</div>${b.tipo === 'general' ? `<small class="nota">${esc(filtroTxt(b))}</small>` : b.tipo === 'campana' ? `<small class="nota">Palabras clave: ${(b.claves || []).length ? esc(b.claves.join(', ')) : 'ninguna'}</small>` : ''}</div>`).join('')}<p class="nota">✓ resultado Ganada · ✕ resultado Perdida · sin marca, En proceso. Los embudos de campaña se crean solos y se archivan al terminar la campaña.</p></div>${cartaTipos()}</div>`);
 }
 function vBajas() { return pagina('Bajas', 'Lista de supresión: ninguna campaña puede enviar a estos teléfonos', btn('Exportar CSV', 'exportar') + btn('+ Baja manual', 'nuevaBaja', 'primario'), tabla(['Teléfono', 'Contacto', 'Fecha', 'Origen', 'Campaña', ''], DB.bajas.map((b, i) => ({ c: [b.tel, esc(b.contacto), b.fecha, chip(b.origen, 'gris'), esc(b.campana), puede('A') ? btn('Quitar baja', 'quitarBaja', 'enlace rojo', `data-i="${i}"`) : ''] }))) + `<p class="nota">Palabras de baja: BAJA, STOP. Toda plantilla de marketing lleva botón de baja.</p>`); }
 // Estado de acceso al CRM: un usuario inactivo no puede entrar; no se borra y su historial se conserva.
 const activos = () => DB.usuarios.filter(u => !u.inactivo);
-const pendientesDe = id => ({ convs: DB.conversaciones.filter(v => v.resp === id && v.estado === 'abierta'), tickets: DB.tickets.filter(k => k.asignado === id && k.estado !== 'Cerrado') });
+const pendientesDe = id => ({ convs: DB.conversaciones.filter(v => v.resp === id && v.estado === 'abierta'), tickets: DB.tickets.filter(k => k.asignado === id && estadoTk(k) !== 'Cerrado') });
 function vUsuarios() {
   return pagina('Usuarios', `${activos().length} de ${DB.empresa.usuariosMax} usuarios activos de tu plan · los inactivos no ocupan lugar`, btn('+ Invitar usuario', 'nuevoUsuario', 'primario'), tabla(['Nombre', 'Correo', 'Rol', 'Sucursal', 'Números', 'Disponibilidad', 'Acceso al CRM'], DB.usuarios.map(u => ({ attr: u.inactivo ? 'class="fila-inactiva"' : '', c: [`<span class="avatar chico">${u.ini}</span> <strong>${esc(u.nombre)}</strong>`, esc(u.correo), chip(u.rol, 'azul'), u.sucursal, u.numeros.map(n => N(n).nombre).join(', ') || '—', u.inactivo ? '<small class="nota">No aplica</small>' : `<i class="punto ${u.disp ? 'ok' : ''}"></i> ${u.disp ? 'Disponible' : 'No disponible'}`, `<span class="estado-sw">${swEstado('usuarioActivo', `data-id="${u.id}"`, !u.inactivo)}<b>${u.inactivo ? 'Inactivo' : 'Activo'}</b>${u.inactivo ? ` <small class="nota">desde el ${esc(u.inactivoDesde || 'hoy')}</small>` : ''}</span>`] }))));
 }
@@ -1336,14 +1445,23 @@ const A = {
   ponerTag: d => { const v = CONV(); if (!v.tags.includes(d.id)) v.tags.push(d.id); cerrarModal(); render(); },
   quitarTag: d => { const v = CONV(), c = C(v.contacto); v.tags = v.tags.filter(t => t !== d.id); c.tags = c.tags.filter(t => t !== d.id); render(); },
   notaModal: () => formModal('Nota interna', [{ id: 't', et: 'Nota (no se envía al cliente)', tipo: 'area' }], v => { if (v.t) C(CONV().contacto).notas.push({ t: v.t, por: E.usuario, f: 'hoy' }); render(); }),
-  ticketModal: () => formModal('Levantar ticket', [{ id: 'm', et: 'Motivo', tipo: 'select', ops: DB.motivos }, { id: 'd', et: 'Descripción', tipo: 'area' }, { id: 'a', et: 'Asignar a', tipo: 'select', ops: activos().map(u => u.nombre) }], f => { const v = CONV(), u = DB.usuarios.find(x => x.nombre === f.a); DB.tickets.unshift({ id: Math.max(...DB.tickets.map(k => k.id)) + 1, conv: v.id, contacto: v.contacto, motivo: f.m, estado: 'Abierto', etapa: 'q1', dias: 0, por: E.usuario, asignado: u.id, creado: 'hoy ' + ahora(), desc: f.d || 'Sin descripción', comentarios: [] }); v.msgs.push({ de: 's', t: `${U(E.usuario).nombre} levantó un ticket: ${f.m}`, h: ahora() }); render(); aviso(`Ticket asignado a ${u.nombre}`); }, 'Levantar ticket'),
+  ticketModal: () => formModal('Levantar ticket', [{ id: 'm', et: 'Motivo', tipo: 'select', ops: DB.motivos }, { id: 'd', et: 'Descripción', tipo: 'area' }, { id: 'a', et: 'Asignar a', tipo: 'select', ops: activos().map(u => u.nombre) }], f => { const v = CONV(), u = DB.usuarios.find(x => x.nombre === f.a); DB.tickets.unshift({ id: Math.max(...DB.tickets.map(k => k.id)) + 1, conv: v.id, contacto: v.contacto, motivo: f.m, etapa: primeraActiva(ETK()).id, dias: 0, por: E.usuario, asignado: u.id, creado: 'hoy ' + ahora(), desc: f.d || 'Sin descripción', comentarios: [] }); v.msgs.push({ de: 's', t: `${U(E.usuario).nombre} levantó un ticket: ${f.m}`, h: ahora() }); render(); aviso(`Ticket asignado a ${u.nombre}`); }, 'Levantar ticket'),
   registrarPermiso: () => { const c = C(CONV().contacto); formModal('Registrar que acepta campañas', [{ id: 'o', et: 'Cómo lo aceptó', tipo: 'select', ops: ['Lo dijo en el chat', 'Lo dijo por teléfono', 'Lo firmó en un formulario', 'Otro'] }, { id: 'n', et: 'Nota (opcional)' }, { tipo: 'nota', et: 'Es solo un registro: no cambia a quién le llegan las campañas. Le llegan a todos menos a quien se dio de baja.' }], f => { c.consent = 'otorgado'; c.permiso = { fecha: fCorta(new Date()), origen: f.o.toLowerCase() + ' (registró ' + U(E.usuario).nombre + ')' + (f.n ? ': ' + f.n : '') }; render(); aviso('Quedó registrado que ' + c.nombre + ' acepta campañas'); }, 'Registrar'); },
   quitarPermiso: () => { const c = C(CONV().contacto); c.consent = 'sin'; delete c.permiso; render(); aviso('Se quitó el registro; las campañas le siguen llegando mientras no se dé de baja'); },
   baja: () => { const c = C(CONV().contacto); if (!confirm(`¿Dar de baja a ${c.nombre}? Ya no recibirá campañas. Podrás seguir atendiéndolo cuando escriba.`)) return; c.consent = 'baja'; DB.bajas.unshift({ tel: c.tel, contacto: c.nombre, fecha: new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }), origen: 'Manual', campana: '—' }); render(); aviso('Agregado a la lista de supresión'); },
   verTicket: d => verTicket(d.id),
-  comentarTicket: d => { const k = DB.tickets.find(x => x.id === +d.id), t = $('#comTicket').value.trim(); if (!t) return; k.comentarios.push({ por: E.usuario, t, f: 'hoy ' + ahora() }); if (k.estado === 'Abierto') { k.estado = 'En proceso'; k.etapa = 'q2'; } E.pestTickets = k.estado; render(); verTicket(k.id); },
-  cerrarTicket: d => { const k = DB.tickets.find(x => x.id === +d.id); k.estado = 'Cerrado'; k.etapa = 'q4'; E.pestTickets = 'Cerrado'; cerrarModal(); render(); aviso(`Ticket #${k.id} cerrado`); },
-  reabrirTicket: d => { const k = DB.tickets.find(x => x.id === +d.id); k.estado = 'En proceso'; k.etapa = 'q2'; E.pestTickets = 'En proceso'; cerrarModal(); render(); },
+  // Eliminar un embudo: solo los generales, y solo si ya no tiene contactos ni lo usa una campaña. Si no, se desactiva.
+  eliminarEmbudo: d => { const b = TB(d.id), n = DB.posiciones.filter(x => x.b === b.id).length, camp = DB.campanas.find(k => k.embudo === b.id);
+    if (b.tipo !== 'general') return aviso(b.tipo === 'tickets' ? 'El embudo de tickets no se puede eliminar' : 'El embudo de una campaña no se elimina: guarda su historial');
+    if (n) return aviso(`No se puede eliminar: tiene ${n} ${n === 1 ? 'contacto' : 'contactos'}. Muévelos o quítalos primero, o desactívalo para que ya no reciba nuevos.`);
+    if (camp) return aviso(`No se puede eliminar: la campaña "${camp.nombre}" lo usa. Desactívalo si ya no quieres que reciba contactos.`);
+    abrirModal('Eliminar embudo · ' + esc(b.n), '<p>Se elimina el embudo con sus etapas. No tiene contactos ni lo usa ninguna campaña.</p>', btn('Cancelar', 'cerrarModal') + btn('Eliminar', 'confirmarEliminarEmbudo', 'primario rojo-btn', `data-id="${b.id}"`)); },
+  confirmarEliminarEmbudo: d => { const b = TB(d.id); DB.embudos = DB.embudos.filter(x => x.id !== d.id); if (E.embudo === d.id) E.embudo = (DB.embudos.find(x => x.tipo !== 'tickets') || {}).id; cerrarModal(); render(); aviso('Embudo ' + b.n + ' eliminado'); },
+  vistaTk: d => { E.vistaTk = d.v; render(); },
+  etapasTk: () => { E.embudo = ETK().id; A.gestionarEtapas(); },
+  comentarTicket: d => { const k = DB.tickets.find(x => x.id === +d.id), t = $('#comTicket').value.trim(); if (!t) return; k.comentarios.push({ por: E.usuario, t, f: 'hoy ' + ahora() }); if (estadoTk(k) === 'Abierto') k.etapa = siguienteAbiertaTk(k).id; E.pestTickets = estadoTk(k); render(); verTicket(k.id); },
+  cerrarTicket: d => { const k = DB.tickets.find(x => x.id === +d.id), cierres = etapasCierreTk(); formModal('Cerrar ticket #' + k.id, [{ id: 'e', et: 'Etapa de cierre', tipo: 'select', ops: cierres.map(e => e.n) }, { tipo: 'nota', et: 'El ticket se cierra al pasar a una etapa que cierra (Ganada o Perdida) del embudo de tickets.' }], f => { k.etapa = cierres.find(e => e.n === f.e).id; E.pestTickets = 'Cerrado'; render(); aviso(`Ticket #${k.id} cerrado en ${f.e}`); }, 'Cerrar ticket'); },
+  reabrirTicket: d => { const k = DB.tickets.find(x => x.id === +d.id), ab = ETK().etapas.filter(e => e.tipo === 'abierta' && !e.inactivo); k.etapa = (ab[1] || ab[0]).id; E.pestTickets = estadoTk(k); cerrarModal(); render(); aviso(`Ticket #${k.id} reabierto en ${ETK().etapas.find(e => e.id === k.etapa).n}`); },
   pestTickets: d => { E.pestTickets = d.p; render(); },
   chatDe: d => { const v = DB.conversaciones.find(x => x.contacto === d.id); cerrarModal(); if (!v) return aviso('Este contacto aún no tiene conversación'); E.conv = v.id; E.ruta = 'bandeja'; E.panel = 'chat'; E.pest = v.estado === 'abierta' ? 'todas' : 'cerradas'; render(); },
   nuevaConv: () => formModal('Nueva conversación', [{ id: 'n', et: 'Nombre' }, { id: 't', et: 'Celular', ph: '10 dígitos' }, { tipo: 'nota', et: 'Como no hay ventana abierta, el primer mensaje debe ser una plantilla aprobada.' }], f => { if (!f.n || !f.t) return aviso('Nombre y celular son obligatorios'); const c = { id: 'c' + Date.now(), nombre: f.n, tel: '+52 ' + f.t, tipo: DB.tiposContacto[0] || '', especial: false, correo: '', consent: 'sin', tags: [], alta: 'hoy', notas: [] }; DB.contactos.push(c); const v = { id: 'v' + Date.now(), numero: E.numero === 'todos' ? 'n1' : E.numero, contacto: c.id, resp: E.usuario, estado: 'abierta', noLeidos: 0, espera: '', ventana: 0, tags: [], campana: null, hora: ahora(), msgs: [{ de: 's', t: 'Conversación creada', h: ahora() }] }; DB.conversaciones.unshift(v); E.conv = v.id; E.panel = 'chat'; E.pest = 'todas'; render(); }, 'Crear'),
@@ -1352,7 +1470,9 @@ const A = {
   importar: () => abrirModal('Importar contactos', `<p>Resultado de validar <strong>contactos-octubre.csv</strong> (simulado):</p><p class="nota">Columna opcional <b>permiso_campanas</b>: "si" registra que el contacto acepta campañas; vacío lo deja sin permiso registrado. Es solo un registro: las campañas llegan a todos menos a las bajas. 118 filas traen "si".</p><div class="resumen"><div class="verde"><small>Nuevos</small><strong>182</strong></div><div><small>Se actualizan</small><strong>41</strong></div><div class="ambar"><small>Duplicados</small><strong>9</strong></div><div class="rojo"><small>Inválidos</small><strong>3</strong></div></div>`, btn('Cancelar', 'cerrarModal') + btn('Importar 223 contactos', 'aviso', 'primario', 'data-t="Importación en proceso: te avisamos al terminar"')),
   exportar: () => aviso('Se descargaría un archivo CSV con lo filtrado'),
   nuevaCampana, revisarCamp, confirmarCamp,
-  descartarCamp: () => { campBorrador = null; cerrarModal(); },
+  descartarCamp: () => { campBorrador = null; campDatos = null; campMapeo = {}; campArchivo = null; campFila = 0; campSeg = []; cerrarModal(); },
+  filaCamp: d => { campFila += +d.d; pintaCamp(); },
+  csvEjemploCamp,
   irTagsCamp: () => { guardaBorrador(); E.ruta = 'tags'; E.panel = 'lista'; cerrarModal(); render(); aviso('Guardé lo que llevabas de la campaña; vuelve con "Volver a la campaña"'); },
   volverCamp: () => { const ent = campBorrador && campBorrador._tipo === 'entrada'; E.ruta = 'campanas'; render(); ent ? nuevaEntrada() : nuevaCampana(); },
   verCampana: d => verCampana(d.id),
@@ -1425,9 +1545,9 @@ const A = {
   selEmbudo: d => { E.embudo = d.id; E.ruta = 'embudo'; cerrarModal(); render(); },
   gestionarEtapas: () => { const b = TB(E.embudo); abrirModal('Etapas de ' + esc(b.n) + (b.inactivo ? ' · inactivo' : ''), b.etapas.map((e, i) => `<div class="d-fila etapa ${e.inactivo ? 'fila-inactiva' : ''}"><span><b>${i + 1}</b> <span class="mini" style="--c:${e.c}">${esc(e.n)}</span>${e.inactivo ? ' ' + chip('Inactiva', 'rojo') : ''}</span><span class="acc-etapa">${chip(e.tipo === 'abierta' ? 'En proceso' : e.tipo === 'ganada' ? 'Ganada' : 'Perdida', e.tipo === 'ganada' ? 'verde' : e.tipo === 'perdida' ? 'gris' : 'azul')}${swEstado('etapaActiva', `data-b="${b.id}" data-id="${e.id}"`, !e.inactivo)}${btn('Editar', 'editarEtapa', 'enlace', `data-id="${e.id}"`)}</span></div>`).join('') + '<p class="nota">A la derecha de cada etapa: su resultado, el interruptor para activarla o desactivarla y Editar. El resultado es lo que usan los reportes para saber qué etapas cuentan como venta.</p>' + (b.tipo === 'general' ? `<h5 style="margin-top:14px">Números que atiende</h5><p>${b.numero ? 'Solo ' + esc(N(b.numero).nombre) + ': sus palabras clave solo cuentan en los chats de ese número.' : 'Todos los números: sus palabras clave cuentan en cualquier chat.'}</p><h5 style="margin-top:14px">Filtro</h5><p>${esc(filtroTxt(b))}</p>${filtroDe(b) !== 'manual' ? `<p class="nota">Quien cumpla el filtro entra solo a la etapa ${esc(primeraActiva(b).n)}.</p>` : ''}` : ''), btn('Cerrar', 'cerrarModal') + btn('Editar embudo', 'editarEmbudo', '', `data-id="${b.id}"`) + btn('+ Etapa', 'nuevaEtapa', 'primario')); },
   abrirEtapas: d => { E.embudo = d.id; A.gestionarEtapas(); },
-  editarEtapa: d => { const b = TB(E.embudo), e = b.etapas.find(x => x.id === d.id), aRes = { abierta: 'En proceso', ganada: 'Ganada', perdida: 'Perdida' }; formModal('Editar etapa', [{ id: 'n', et: 'Nombre', valor: e.n }, { id: 't', et: 'Resultado', tipo: 'select', ops: ['En proceso', 'Ganada', 'Perdida'], valor: aRes[e.tipo] }, { id: 'c', et: 'Color (Automático deja el actual)', tipo: 'paleta' }, { id: 'es', et: 'Estado', tipo: 'estado', ops: ['Activa', 'Inactiva'], valor: e.inactivo ? 'Inactiva' : 'Activa' }, { tipo: 'nota', et: 'Una etapa con tarjetas no se puede desactivar: primero se mueven sus tarjetas.' }], f => { if (!(f.n || '').trim()) return aviso('Falta el nombre de la etapa'); const nuevoTipo = { 'En proceso': 'abierta', Ganada: 'ganada', Perdida: 'perdida' }[f.t]; if (e.tipo === 'abierta' && nuevoTipo !== 'abierta' && !b.etapas.some(x => x !== e && !x.inactivo && x.tipo === 'abierta')) return aviso('Debe quedar al menos una etapa En proceso activa'); if ((f.es === 'Inactiva') !== !!e.inactivo && cambiaEtapa(b.id, e.id, f.es === 'Activa') !== true) return false; e.n = f.n.trim(); e.tipo = nuevoTipo; if (f.c) e.c = f.c; render(); A.gestionarEtapas(); aviso('Etapa guardada'); }); },
+  editarEtapa: d => { const b = TB(E.embudo), e = b.etapas.find(x => x.id === d.id), aRes = { abierta: 'En proceso', ganada: 'Ganada', perdida: 'Perdida' }; formModal('Editar etapa', [{ id: 'n', et: 'Nombre', valor: e.n }, { id: 't', et: 'Resultado', tipo: 'select', ops: ['En proceso', 'Ganada', 'Perdida'], valor: aRes[e.tipo] }, { id: 'c', et: 'Color (Automático deja el actual)', tipo: 'paleta' }, { id: 'es', et: 'Estado', tipo: 'estado', ops: ['Activa', 'Inactiva'], valor: e.inactivo ? 'Inactiva' : 'Activa' }, { tipo: 'nota', et: 'Una etapa con tarjetas no se puede desactivar: primero se mueven sus tarjetas.' }], f => { if (!(f.n || '').trim()) return aviso('Falta el nombre de la etapa'); const nuevoTipo = { 'En proceso': 'abierta', Ganada: 'ganada', Perdida: 'perdida' }[f.t]; if (e.tipo === 'abierta' && nuevoTipo !== 'abierta' && !b.etapas.some(x => x !== e && !x.inactivo && x.tipo === 'abierta')) return aviso('Debe quedar al menos una etapa En proceso activa'); if (b.tipo === 'tickets' && e.tipo !== 'abierta' && nuevoTipo === 'abierta' && !b.etapas.some(x => x !== e && !x.inactivo && x.tipo !== 'abierta')) return aviso('El embudo de tickets debe tener al menos una etapa que cierre el ticket'); if ((f.es === 'Inactiva') !== !!e.inactivo && cambiaEtapa(b.id, e.id, f.es === 'Activa') !== true) return false; e.n = f.n.trim(); e.tipo = nuevoTipo; if (f.c) e.c = f.c; render(); A.gestionarEtapas(); aviso('Etapa guardada'); }); },
   editarClaves: () => A.editarEmbudo({ id: E.embudo }),
-  editarEmbudo: d => { const b = TB(d.id || E.embudo), general = b.tipo === 'general'; formModal('Editar embudo', [{ id: 'n', et: 'Nombre', valor: b.n }, { id: 'd', et: 'Descripción', valor: b.desc || '' }, ...(general ? [{ id: 'nu', et: 'Este embudo atiende las conversaciones de', tipo: 'select', ops: opsNumero(), valor: numeroTxt(b.numero) }, ...camposFiltro(b)] : []), { id: 'es', et: 'Estado', tipo: 'estado', ops: ['Activo', 'Inactivo'], valor: b.inactivo ? 'Inactivo' : 'Activo' }, { tipo: 'nota', et: 'Un embudo inactivo ya no recibe contactos nuevos, ni a mano ni por palabras clave. Los que ya están se conservan y se siguen viendo en reportes.' }], f => { if (!(f.n || '').trim()) return aviso('Falta el nombre del embudo'); if (general && !leerFiltro(f)) return false; if ((f.es === 'Inactivo') !== !!b.inactivo && cambiaEmbudo(b.id, f.es === 'Activo') !== true) return false; b.n = f.n.trim(); b.desc = f.d; if (general) { const filtro = leerFiltro(f); if (!filtro) return false; b.numero = numeroDeOp(f.nu); Object.assign(b, filtro); } render(); aviso('Embudo guardado'); }); },
+  editarEmbudo: d => { const b = TB(d.id || E.embudo), general = b.tipo === 'general'; formModal('Editar embudo', [{ id: 'n', et: 'Nombre', valor: b.n }, { id: 'd', et: 'Descripción', valor: b.desc || '' }, ...(general ? [{ id: 'nu', et: 'Este embudo atiende las conversaciones de', tipo: 'select', ops: opsNumero(), valor: numeroTxt(b.numero) }, ...camposFiltro(b)] : []), ...(b.tipo === 'tickets' ? [{ tipo: 'nota', et: '<b>Siempre activo.</b> Es el embudo de tickets: cada ticket vive en sus etapas, así que no se puede desactivar ni borrar. Sus etapas se gestionan desde Tickets.' }] : [{ id: 'es', et: 'Estado', tipo: 'estado', ops: ['Activo', 'Inactivo'], valor: b.inactivo ? 'Inactivo' : 'Activo' }, { tipo: 'nota', et: 'Un embudo inactivo ya no recibe contactos nuevos, ni a mano ni por palabras clave. Los que ya están se conservan y se siguen viendo en reportes.' }])], f => { if (!(f.n || '').trim()) return aviso('Falta el nombre del embudo'); if (general && !leerFiltro(f)) return false; if (b.tipo !== 'tickets' && (f.es === 'Inactivo') !== !!b.inactivo && cambiaEmbudo(b.id, f.es === 'Activo') !== true) return false; b.n = f.n.trim(); b.desc = f.d; if (general) { const filtro = leerFiltro(f); if (!filtro) return false; b.numero = numeroDeOp(f.nu); Object.assign(b, filtro); } render(); aviso('Embudo guardado'); }); },
   nuevoEmbudo: () => formModal('Nuevo embudo', [{ id: 'n', et: 'Nombre' }, { id: 'd', et: 'Descripción' }, { id: 'c', et: 'Copiar etapas de', tipo: 'select', ops: ['Ninguno (empezar con Nuevo, En proceso, Ganado, Perdido)', ...DB.embudos.map(b => b.n)] }, { id: 'nu', et: 'Este embudo atiende las conversaciones de', tipo: 'select', ops: ['Todos los números', ...DB.numeros.map(n => 'Solo el número ' + n.nombre)] }, { tipo: 'nota', et: 'No elige a qué embudo va un cliente: limita este embudo a un número. Si eliges un solo número, las palabras clave de abajo solo cuentan en los chats de ese número y el embudo solo muestra sus conversaciones. Con «Todos los números» cuentan en cualquiera.' }, ...camposFiltro(null), { id: 'es', et: 'Estado', tipo: 'estado', ops: ['Activo', 'Inactivo'], valor: 'Activo' }], f => { if (!(f.n || '').trim()) return aviso('Falta el nombre del embudo'); const filtro = leerFiltro(f); if (!filtro) return false; const id = 'b' + Date.now(), o = DB.embudos.find(b => b.n === f.c); const es = (o ? o.etapas.map(e => [e.n, e.tipo, e.c]) : [['Nuevo', 'abierta', '#2563eb'], ['En proceso', 'abierta', '#f59e0b'], ['Ganado', 'ganada', '#0e9f6e'], ['Perdido', 'perdida', '#94a3b8']]).map((e, i) => ({ id: id + 's' + i, n: e[0], tipo: e[1], c: e[2] })); DB.embudos.push({ id, n: f.n || 'Embudo nuevo', tipo: 'general', numero: (DB.numeros.find(n => 'Solo el número ' + n.nombre === f.nu) || {}).id || null, ...filtro, desc: f.d || 'Agrega contactos desde el chat con "Agregar a embudo".', etapas: es, inactivo: f.es === 'Inactivo' }); E.embudo = id; E.ruta = 'embudo'; render(); aviso('Embudo creado'); }, 'Crear embudo'),
   agregarEmbudo: () => { const c = C(CONV().contacto), ya = posDe(c).map(p => p.b), libres = DB.embudos.filter(b => b.tipo !== 'tickets' && !b.inactivo && !ya.includes(b.id)); abrirModal('Agregar a embudo', libres.length ? `<p class="nota">Entra en la primera etapa; después la cambias desde aquí mismo.</p><div class="opciones">${libres.map(b => `<a data-accion="agregarA" data-b="${b.id}"><strong>${esc(b.n)}</strong><small>${b.etapas.filter(e => !e.inactivo).map(e => esc(e.n)).join(' → ')}</small></a>`).join('')}</div>` : '<p>Este contacto ya está en todos los embudos.</p>'); },
   agregarA: d => { const c = C(CONV().contacto), b = TB(d.b); DB.posiciones.push({ c: c.id, b: b.id, e: primeraActiva(b).id, m: 0, dias: 0 }); cerrarModal(); render(); aviso(`${c.nombre} entró a ${b.n}`); },
@@ -1444,6 +1564,9 @@ document.addEventListener('click', ev => {
   const fn = A[el.dataset.accion]; if (fn) { ev.preventDefault(); fn(el.dataset, el); }
 });
 document.addEventListener('change', ev => {
+  if (ev.target.id === 'csvCamp') { const a = ev.target.files[0]; if (!a) return; const lector = new FileReader(); lector.onload = () => { const d = leeCsv(String(lector.result)); if (!d.columnas.length || !d.filas.length) return aviso('El CSV no tiene encabezados o filas'); campDatos = { ...d, nombre: a.name }; campMapeo = {}; campFila = 0; const n = $('#csvNombre'); if (n) n.textContent = a.name + ' · ' + d.filas.length + ' filas · columnas: ' + d.columnas.join(', '); pintaCamp(); }; return lector.readAsText(a); }
+  if (ev.target.id === 'medioCamp') { const a = ev.target.files[0]; if (!a) return; const p = plCamp(), [tipo, mb, txt] = ACEPTA_PL[p.encTipo]; if (!tipo.test(a.type)) return aviso('El encabezado es de ' + p.encTipo.toLowerCase() + ': sube un ' + txt); if (a.size > mb * 1024 * 1024) return aviso('El archivo pesa más de ' + mb + ' MB'); campArchivo = { nombre: a.name, url: URL.createObjectURL(a), medio: p.encTipo }; return pintaCamp(); }
+  if (ev.target.closest && ev.target.closest('#mapeoCamp')) { const n = ev.target.name || ''; if (n.startsWith('map_')) { const key = n.slice(4); campMapeo[key] = ev.target.value === '__fijo' ? { fijo: true, valor: '' } : { col: ev.target.value }; return pintaCamp(); } }
   if (ev.target.dataset && ev.target.dataset.subir) return subirPl(ev.target);
   if (ev.target.dataset && ev.target.dataset.img) { const a = ev.target.files[0], k = ev.target.dataset.img; if (!a) return; if (a.size > 2 * 1024 * 1024) return aviso('La imagen pesa más de 2 MB'); const lector = new FileReader(); lector.onload = () => { if ($('#formEmp')) E.empTmp = Object.fromEntries(new FormData($('#formEmp'))); DB.empresa[k] = lector.result; render(); aviso((k === 'logo' ? 'Logo' : 'Ícono') + ' cargado; se guarda con "Guardar cambios"'); }; return lector.readAsDataURL(a); }
   const el = ev.target, k = el.dataset.cambio; if (!k) return;
@@ -1478,8 +1601,10 @@ document.addEventListener('change', ev => {
   if (k === 'embEnt') return $('#filtroEnt').innerHTML = infoEmbCamp(TB(el.value), true);
   if (k === 'numEnt') { $('#formEnt [name=embudo]').innerHTML = opsEmbCamp(el.value); return $('#filtroEnt').innerHTML = infoEmbCamp(embudosCamp(el.value)[0], true); }
   if (k === 'embCamp') return $('#filtroCamp').innerHTML = infoEmbCamp(TB(el.value));
-  if (k === 'numCamp') { const ap = plantillasDe(el.value).filter(p => p.estado === 'Aprobada'), s = $('#formCamp [name=plantilla]'); s.innerHTML = ap.map(p => `<option>${p.nombre}</option>`).join(''); $('#formCamp [name=embudo]').innerHTML = opsEmbCamp(el.value); $('#filtroCamp').innerHTML = infoEmbCamp(embudosCamp(el.value)[0]); return $('#previaCamp').innerHTML = ap.length ? previaPlantilla(ap[0]) : '<p class="nota">Este número no tiene plantillas aprobadas.</p>'; }
-  if (k === 'previaCamp') return $('#previaCamp').innerHTML = previaPlantilla(DB.plantillas.find(p => p.nombre === el.value));
+  if (k === 'numCamp') { const ap = plantillasDe(el.value).filter(p => p.estado === 'Aprobada'), sl = $('#formCamp [name=plantilla]'); sl.innerHTML = ap.map(p => `<option>${p.nombre}</option>`).join(''); $('#formCamp [name=embudo]').innerHTML = opsEmbCamp(el.value); $('#filtroCamp').innerHTML = infoEmbCamp(embudosCamp(el.value)[0]); campMapeo = { _tel: campMapeo._tel }; campArchivo = null; return pintaCamp(); }
+  if (k === 'previaCamp') { campMapeo = { _tel: campMapeo._tel }; campArchivo = null; return pintaCamp(); }
+  if (k === 'segCamp') { campSeg = [...document.querySelectorAll('#formCamp [name=segTag]:checked')].map(x => x.value); campFila = 0; return pintaCamp(); }
+  if (k === 'audCamp' || k === 'listaCamp') { campMapeo = {}; campFila = 0; aplicarSi(); return pintaCamp(); }
   render();
 });
 document.addEventListener('input', ev => {
@@ -1491,6 +1616,7 @@ document.addEventListener('input', ev => {
   if (ev.target.closest('#formEnv')) pintaEnv();
   if (ev.target.id === 'buscaLista') { E.buscaLista = ev.target.value; $('#filasLista').innerHTML = filasLista(DB.listas.find(l => l.id === E.listaAbierta)); }
   if (ev.target.id === 'busca') { E.busca = ev.target.value; $('#listaConvs').innerHTML = filasConv(); }
+  if (ev.target.name && ev.target.name.startsWith('fijo_') && ev.target.closest('#mapeoCamp')) { const key = ev.target.name.slice(5); campMapeo[key] = { fijo: true, valor: ev.target.value }; const pos = ev.target.selectionStart; pintaCamp(); const i = $('#mapeoCamp [name="' + ev.target.name + '"]'); if (i) { i.focus(); i.setSelectionRange(pos, pos); } return; }
   if (ev.target.id === 'buscaPl' || ev.target.id === 'buscaRap') { const id = ev.target.id; if (id === 'buscaPl') E.buscaPl = ev.target.value; else { E.buscaRap = ev.target.value; E.pagRap = 1; } render(); const b = $('#' + id); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
   if (ev.target.id === 'buscaContacto') { E.buscaContacto = ev.target.value; render(); const b = $('#buscaContacto'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
   if (ev.target.id === 'texto' && ev.target.value === '/') { ev.target.value = ''; A.rapidas(); }
@@ -1504,8 +1630,8 @@ function moverTarjeta(idEmbudo, id, idEtapa) {
   const b = TB(idEmbudo), e = b.etapas.find(x => x.id === idEtapa);
   if (b.tipo === 'tickets') {
     const k = DB.tickets.find(x => String(x.id) === String(id)); if (k.etapa === idEtapa) return;
-    k.etapa = idEtapa; k.estado = e.tipo !== 'abierta' ? 'Cerrado' : b.etapas[0].id === idEtapa ? 'Abierto' : 'En proceso';
-    return aviso(`Ticket #${k.id} pasó a ${e.n}: queda ${k.estado.toLowerCase()}`);
+    k.etapa = idEtapa;
+    return aviso(`Ticket #${k.id} pasó a ${e.n}: queda ${estadoTk(k).toLowerCase()}`);
   }
   const c = C(id), p = DB.posiciones.find(x => x.c === id && x.b === idEmbudo);
   if (!p || p.e === idEtapa) return;
@@ -1518,7 +1644,7 @@ let arrastrado = null;
 document.addEventListener('dragstart', ev => { const t = ev.target.closest('.tarjeta'); if (t) { arrastrado = t.dataset.id; t.classList.add('arrastrando'); } });
 document.addEventListener('dragover', ev => { const c = ev.target.closest('.columna'); if (c && arrastrado) { ev.preventDefault(); c.classList.add('sobre'); } });
 document.addEventListener('dragleave', ev => { const c = ev.target.closest('.columna'); if (c) c.classList.remove('sobre'); });
-document.addEventListener('drop', ev => { const c = ev.target.closest('.columna'); if (c && arrastrado) { ev.preventDefault(); moverTarjeta(E.embudo, arrastrado, c.dataset.etapa); arrastrado = null; render(); } });
+document.addEventListener('drop', ev => { const c = ev.target.closest('.columna'); if (c && arrastrado) { ev.preventDefault(); moverTarjeta(E.ruta === 'tickets' ? ETK().id : E.embudo, arrastrado, c.dataset.etapa); arrastrado = null; render(); } });
 document.addEventListener('dragend', () => { arrastrado = null; });
 
 $('#selRol').addEventListener('change', ev => { E.rol = ev.target.value; E.usuario = ((DB.usuarios.find(u => u.id === USUARIO_POR_ROL[E.rol] && !u.inactivo) || DB.usuarios.find(u => !u.inactivo && u.rol === { A: 'Administrador', S: 'Supervisor', G: 'Agente' }[E.rol])) || U(USUARIO_POR_ROL[E.rol])).id || USUARIO_POR_ROL[E.rol]; if (E.ruta !== 'login') E.ruta = E.rol === 'P' ? 'empresas' : 'bandeja'; E.panel = 'lista'; render(); });

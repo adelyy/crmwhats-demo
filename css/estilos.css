@@ -420,3 +420,13 @@ body.movil .fila-img .img-prev.ancho { width: 120px; height: 40px; } body.movil 
 details.no-ofrece { margin-top: 10px; } details.no-ofrece summary { cursor: pointer; font-weight: 600; }
 .datos-fijos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 14px; background: #f8fafc; border: 1px solid var(--linea); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
 .datos-fijos small { display: block; color: #64748b; font-size: 11px; } .datos-fijos .nota { grid-column: 1 / -1; margin: 0; }
+/* Campaña: emparejado de variables con columnas */
+.map-fila { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 8px; align-items: center; margin: 6px 0; }
+.map-var { font-size: 13px; font-weight: 600; } .map-fila select, .map-fila input { width: 100%; min-width: 0; }
+.nav-fila { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; font-size: 13px; } .nav-fila span { flex: 1; text-align: center; }
+body.movil .map-fila { grid-template-columns: 1fr; }
+.m-caja.extra #formCamp.dos { grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr); gap: 24px; align-items: start; }
+.m-caja.extra #formCamp.dos > div:last-child { position: sticky; top: 0; align-self: start; max-height: calc(94vh - 150px); overflow: auto; }
+body.movil .m-caja.extra #formCamp.dos { grid-template-columns: 1fr; } body.movil .m-caja.extra #formCamp.dos > div:last-child { position: static; max-height: none; }
+.tags-seg { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.resumen-tk { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 12px; font-size: 13px; color: #475569; } .resumen-tk b { color: #0f172a; margin-left: 4px; }
