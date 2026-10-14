@@ -393,3 +393,30 @@ body.movil .m-caja.extra #formPl.dos { grid-template-columns: 1fr; } body.movil 
 .et-img { font-size: 13px; font-weight: 600; } .fila-img .tipo-p { margin: 0 0 4px; }
 .fila-img .img-prev { width: 72px; height: 72px; } .fila-img .img-prev.ancho { width: 180px; height: 52px; }
 body.movil .fila-img .img-prev.ancho { width: 120px; height: 40px; } body.movil .fila-img .img-prev { width: 56px; height: 56px; }
+/* Crear plantilla con arreglos: ejemplos, botones y tarjetas */
+.mini-var { font-size: 12px; padding: 2px 0; margin-top: 4px; }
+.ejemplos-pl { display: flex; flex-direction: column; gap: 6px; margin: -4px 0 12px; padding: 8px 10px; background: #f8fafc; border: 1px dashed var(--linea); border-radius: 8px; }
+.en-linea-ej { display: grid; grid-template-columns: 48px 1fr; align-items: center; gap: 8px; margin: 0; } .en-linea-ej span { margin: 0; font-weight: 600; }
+.bt-pl, .tarjeta-pl { border: 1px solid var(--linea); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.bt-pl.sistema { background: #f8fafc; color: #475569; }
+.bt-cab { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; } .bt-cab .btn { margin-left: auto; }
+/* Crear plantilla como la captura de referencia */
+.chips-pl { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0 6px; }
+.chip-pl { border: 1px solid var(--linea); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; }
+.chip-pl.activo { background: #e0f2fe; border-color: #0284c7; color: #0369a1; font-weight: 600; }
+.pie-campo { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 2px; }
+.contador { color: #94a3b8; font-size: 11px; white-space: nowrap; }
+.tit-ej { font-size: 12px; } .aviso-ej { display: block; margin: 2px 0 6px; }
+.fila-bt { display: flex; align-items: center; gap: 8px; margin: 6px 0; } .fila-bt input { flex: 1; min-width: 0; }
+.fila-bt.sistema { color: #475569; font-size: 13px; background: #f8fafc; border-radius: 8px; padding: 6px 8px; }
+.chip-tipo { border: 1px solid var(--linea); border-radius: 999px; padding: 3px 10px; font-size: 12px; white-space: nowrap; background: #fff; }
+.bt-url { width: 100%; margin: 2px 0; }
+.adds-bt { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.archivo-pl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 8px; } .archivo-pl .ok { color: var(--marca-o, #0e9f6e); } .archivo-pl .btn { margin-left: auto; }
+.fila-cab { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; } .der { margin-left: auto; display: inline-flex; gap: 4px; }
+.icono-bt { padding: 2px 8px !important; min-width: 0; }
+.enc-medio { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--linea); border-radius: 8px; padding: 8px 10px; }
+.tarjeta-pl input[name^="tc_txt_"] { width: 100%; }
+details.no-ofrece { margin-top: 10px; } details.no-ofrece summary { cursor: pointer; font-weight: 600; }
+.datos-fijos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 14px; background: #f8fafc; border: 1px solid var(--linea); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+.datos-fijos small { display: block; color: #64748b; font-size: 11px; } .datos-fijos .nota { grid-column: 1 / -1; margin: 0; }

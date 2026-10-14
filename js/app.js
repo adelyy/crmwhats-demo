@@ -700,171 +700,299 @@ const NOTA_CAT = {
   'Autenticación': 'Autenticación: solo códigos de un solo uso. Meta pone el texto; no admite archivos, enlaces ni emojis.'
 };
 const MEDIO_PL = { Foto: 'JPG o PNG, hasta 5 MB', Video: 'MP4 (H.264 y AAC), hasta 16 MB', Documento: 'PDF, hasta 100 MB' };
-// Archivos de la plantilla: siempre se suben con un botón (no se toman archivos guardados) y se ven en la vista previa.
-let subidasPl = {};
-const muestraPl = (et, nombre, medio) => `<div class="campo"><span>${et} *</span><small class="tipo-p">Se sube aquí y va a Meta como muestra: ${MEDIO_PL[medio] || MEDIO_PL.Foto}</small><div class="subida-pl"><label class="btn">Subir archivo<input type="file" data-subir="${nombre}" hidden></label><small class="nota" id="nom_${nombre}">${subidasPl[nombre] ? esc(subidasPl[nombre].nombre) : 'Sin archivo'}</small></div></div>`;
+const NO_SE_OFRECEN = [['Catálogo, Varios productos, Un producto y Carrusel de productos', 'requieren un catálogo de productos en Meta'], ['Permiso para llamar y botón de llamada por WhatsApp', 'requieren llamadas de WhatsApp, que son de una fase posterior'], ['Con formulario (Flows)', 'fuera del alcance'], ['Pedidos y pagos dentro de WhatsApp', 'fuera del alcance']];
+const USOS_PL = ['Iniciar conversación', 'Seguimiento', 'Campaña'];
+const FORMATO_PL = { estandar: 'Mensaje simple', carrusel: 'Carrusel', oferta: 'Oferta por tiempo limitado', cupon: 'Código de cupón', auth: 'Código de verificación' };
+const formatosDe = cat => TIPOS_PL.filter(x => !x.bloqueado && x.cats.includes(cat)).map(x => x.id);
+
+/* Crear plantilla. Sigue la forma con la que Meta recibe una plantilla (POST /<WABA>/message_templates):
+   name, language, category y un ARREGLO de componentes (HEADER, BODY, FOOTER, BUTTONS, LIMITED_TIME_OFFER, CAROUSEL).
+   - Cada texto con variables lleva su ARREGLO de ejemplos, en orden: header_text ["…"], body_text [["…", "…"]].
+   - BUTTONS es un ARREGLO; WhatsApp los agrupa por tipo y cada botón se identifica por su posición (índice) al enviar.
+   - CAROUSEL es un ARREGLO de tarjetas; cada tarjeta tiene su propio ARREGLO de componentes con sus propios ejemplos.
+   La pantalla sigue el orden de la captura de Adely: nombre, categoría e idioma, formato del mensaje, encabezado, cuerpo
+   con sus variables, pie, botones (o tarjetas) y tipo de plantilla. El borrador (borPl) guarda esos mismos arreglos. */
+let borPl = null, subidasPl = {};
+const conVarUrl = u => /\{\{1\}\}$/.test(u || '');
+function borNuevo(tipo, nombre) {
+  const cat = tipo === 'auth' ? 'Autenticación' : 'Marketing';
+  const b = { tipo, nombre: nombre || '', cat, idioma: 'Español (MX)', numeroPl: E.numPl || DB.numeros[0].id, encTipo: 'Ninguno', encTexto: '', ejH: [], cuerpo: '', ejB: [], pie: '', botones: [], medio: 'Foto', tarjetas: [], tBotones: [], oferta: '', vence: true, codigo: '', otp: 'Copiar código', btnAuth: 'Copiar código', seg: true, min: '10', paquete: '', firma: '', terminos: false, uso: tipo === 'carrusel' ? 'Campaña' : 'Campaña' };
+  if (tipo === 'estandar') b.cuerpo = 'Hola {{1}}, tenemos una oferta especial para ti.';
+  if (tipo === 'carrusel') { b.cuerpo = 'Hola {{1}}, tenemos una oferta especial para ti.'; b.tBotones = ['Enlace']; b.tarjetas = [{ texto: '', ej: [], b: [{}] }, { texto: '', ej: [], b: [{}] }]; }
+  if (tipo === 'oferta') { b.cuerpo = 'Hola {{1}}, solo esta semana en toda la tienda.'; b.oferta = '20% de descuento'.slice(0, 16); b.codigo = 'OTONO20'; b.botones = [{ tipo: 'Enlace', texto: 'Comprar', url: 'https://tienda.com/ofertas' }]; }
+  if (tipo === 'cupon') { b.encTexto = 'Tu cupón de bienvenida'; b.encTipo = 'Texto'; b.cuerpo = 'Hola {{1}}, usa este cupón en tu próxima compra.'; b.codigo = 'BIENVENIDA10'; b.botones = [{ tipo: 'Respuesta rápida', texto: 'Quiero comprar' }]; }
+  if (tipo === 'auth') b.uso = 'Iniciar conversación';
+  return b;
+}
+// Botones como los recibe Meta: el arreglo completo en su orden final. WhatsApp los muestra agrupados por tipo:
+// primero las respuestas rápidas (con "Darme de baja"), después enlaces y teléfono. Su posición es el índice.
+function botonesFinales(b) {
+  const tipoMeta = { 'Respuesta rápida': 'QUICK_REPLY', Enlace: 'URL', Llamar: 'PHONE_NUMBER' };
+  const usuario = b.botones.map((x, i) => ({ ...x, tipo: tipoMeta[x.tipo], conVar: conVarUrl(x.url), de: i }));
+  const qr = usuario.filter(x => x.tipo === 'QUICK_REPLY'), otros = usuario.filter(x => x.tipo !== 'QUICK_REPLY');
+  const baja = b.cat === 'Marketing' ? [{ tipo: 'QUICK_REPLY', texto: 'Darme de baja', sistema: true }] : [];
+  if (b.tipo === 'auth') return [{ tipo: 'OTP', texto: b.btnAuth || 'Copiar código', sistema: true }];
+  if (b.tipo === 'oferta') return [...(b.codigo ? [{ tipo: 'COPY_CODE', texto: 'Copiar código', sistema: true }] : []), ...otros];
+  if (b.tipo === 'cupon') return [...qr, ...baja, { tipo: 'COPY_CODE', texto: 'Copiar código', sistema: true }, ...otros];
+  if (b.tipo === 'estandar') return [...qr, ...baja, ...otros];
+  return [];
+}
+const textoAuth = b => '{{1}} es tu código de verificación.' + (b.seg ? ' Por tu seguridad, no lo compartas.' : '');
+// Lo que se manda a Meta al crear la plantilla.
+function crearMeta(b) {
+  const fmt = { Foto: 'IMAGE', Video: 'VIDEO', Documento: 'DOCUMENT', 'Ubicación': 'LOCATION' }, cat = { Marketing: 'MARKETING', Utilidad: 'UTILITY', 'Autenticación': 'AUTHENTICATION' }[b.cat];
+  const handle = k => subidasPl[k] ? '<identificador de ' + subidasPl[k].nombre + ' (Resumable Upload)>' : '<falta subir el archivo>';
+  const ejemplos = (clave, arr, doble) => arr.length ? { example: { [clave]: doble ? [arr] : arr } } : {};
+  const url = (texto, u, ej) => ({ type: 'URL', text: texto || '', url: u || '', ...(conVarUrl(u) ? { example: [(u || '').replace('{{1}}', ej || '')] } : {}) });
+  const comps = [];
+  if (b.tipo === 'auth') {
+    comps.push({ type: 'BODY', add_security_recommendation: !!b.seg });
+    if (b.min) comps.push({ type: 'FOOTER', code_expiration_minutes: +b.min });
+    const otp = { 'Copiar código': 'COPY_CODE', 'Autocompletar con un toque (solo Android)': 'ONE_TAP', 'Sin toque (solo Android)': 'ZERO_TAP' }[b.otp];
+    comps.push({ type: 'BUTTONS', buttons: [{ type: 'OTP', otp_type: otp, text: b.btnAuth || 'Copiar código', ...(otp !== 'COPY_CODE' ? { supported_apps: [{ package_name: b.paquete, signature_hash: b.firma }] } : {}), ...(otp === 'ZERO_TAP' ? { zero_tap_terms_accepted: !!b.terminos } : {}) }] });
+    return { name: b.nombre, language: idiomaMeta(b.idioma), category: cat, components: comps };
+  }
+  if ((b.tipo === 'estandar' || b.tipo === 'cupon') && b.encTipo === 'Texto' && b.encTexto) comps.push({ type: 'HEADER', format: 'TEXT', text: b.encTexto, ...ejemplos('header_text', b.ejH) });
+  if (b.tipo === 'estandar' && ['Foto', 'Video', 'Documento'].includes(b.encTipo)) comps.push({ type: 'HEADER', format: fmt[b.encTipo], example: { header_handle: [handle('muestraH')] } });
+  if (b.tipo === 'estandar' && b.encTipo === 'Ubicación') comps.push({ type: 'HEADER', format: 'LOCATION' });
+  if (b.tipo === 'oferta') comps.push({ type: 'HEADER', format: fmt[b.medio], example: { header_handle: [handle('muestraH')] } });
+  if (b.tipo === 'oferta') comps.push({ type: 'LIMITED_TIME_OFFER', limited_time_offer: { text: b.oferta, has_expiration: !!b.vence } });
+  comps.push({ type: 'BODY', text: b.cuerpo, ...ejemplos('body_text', b.ejB, true) });
+  if (b.tipo === 'estandar' && b.pie) comps.push({ type: 'FOOTER', text: b.pie });
+  const fin = botonesFinales(b);
+  if (fin.length) comps.push({ type: 'BUTTONS', buttons: fin.map(x => x.tipo === 'QUICK_REPLY' ? { type: 'QUICK_REPLY', text: x.texto } : x.tipo === 'URL' ? url(x.texto, x.url, x.ej) : x.tipo === 'PHONE_NUMBER' ? { type: 'PHONE_NUMBER', text: x.texto, phone_number: (x.tel || '').replace(/\s/g, '') } : { type: 'COPY_CODE', example: b.codigo }) });
+  if (b.tipo === 'carrusel') comps.push({ type: 'CAROUSEL', cards: b.tarjetas.map((t, i) => ({ components: [
+    { type: 'HEADER', format: fmt[b.medio], example: { header_handle: [handle('tM' + i)] } },
+    ...(t.texto ? [{ type: 'BODY', text: t.texto, ...ejemplos('body_text', t.ej, true) }] : []),
+    { type: 'BUTTONS', buttons: b.tBotones.map((tp, k) => { const x = t.b[k] || {}; return tp === 'Respuesta rápida' ? { type: 'QUICK_REPLY', text: x.texto || '' } : url(x.texto, x.url, x.ej); }) }
+  ] })) });
+  return { name: b.nombre, language: idiomaMeta(b.idioma), category: cat, components: comps };
+}
+
+/* ---------- Dibujo del formulario ---------- */
+const contador = (nombre, valor, max) => `<small class="contador" data-cont="${nombre}">${(valor || '').length}/${max}</small>`;
+const muestraPl = (nombre, medio, et) => `<div class="archivo-pl"><span class="${subidasPl[nombre] ? 'ok' : 'rojo'}">${subidasPl[nombre] ? '📎 ' + esc(subidasPl[nombre].nombre) : '⦸ Sin archivo'}</span><small class="tipo-p">${et || ''}${MEDIO_PL[medio] || MEDIO_PL.Foto}</small><label class="btn">⬆ Elegir<input type="file" data-subir="${nombre}" hidden></label></div>`;
+const botonVar = campo => `<button type="button" class="btn enlace mini-var" data-accion="agregarVarPl" data-campo="${campo}">+ Agregar variable</button>`;
+// Variables de un texto: un ejemplo por variable, en orden; es el arreglo que se manda a Meta.
+function ejemplosHtml(pref, texto, valores) {
+  const n = varsDe(texto).length;
+  if (!n) return `<div id="ejw_${pref}"></div>`;
+  return `<div class="ejemplos-pl" id="ejw_${pref}"><b class="tit-ej">{x} Declarar variables (ejemplo, requerido)</b>${Array.from({ length: n }, (_, i) => `<label class="en-linea-ej"><span>{{${i + 1}}}</span><input name="${pref}${i}" value="${esc(valores[i] || '')}" placeholder="Ej. María"></label>`).join('')}</div>`;
+}
+const faltanEjHtml = (pref, texto, valores) => { const f = varsDe(texto).map((k, i) => !(valores[i] || '').trim() ? '{{' + (i + 1) + '}}' : null).filter(Boolean); return f.length ? `<small class="rojo aviso-ej">⚠ Declara un ejemplo para ${f.join(', ')}.</small>` : ''; };
+const areaPl = (et, nombre, valor, max, ph = '') => `<div class="campo"><span>${et}</span><textarea name="${nombre}" rows="3" maxlength="${max}" placeholder="${esc(ph)}">${esc(valor)}</textarea><div class="pie-campo"><small class="nota">ⓘ Usa {{1}}, {{2}}… para variables. ${botonVar(nombre)}</small>${contador(nombre, valor, max)}</div><div id="fej_${nombre}"></div></div>`;
+const textoPl = (et, nombre, valor, max, ph, conVar) => `<div class="campo"><span>${et}</span><input name="${nombre}" value="${esc(valor)}" maxlength="${max}" placeholder="${esc(ph || '')}"><div class="pie-campo"><small class="nota">${conVar ? botonVar(nombre) : ''}</small>${contador(nombre, valor, max)}</div></div>`;
+const chipsPl = (accion, opciones, actual, extra = '') => `<div class="chips-pl">${opciones.map(o => `<button type="button" class="chip-pl ${o === actual ? 'activo' : ''}" data-accion="${accion}" data-v="${esc(o)}" ${extra}>${esc(o)}</button>`).join('')}</div>`;
+function filaBoton(x, i, idx, quitar, nombres) {
+  const n = nombres || { txt: 'bt_txt_' + i, url: 'bt_url_' + i, ej: 'bt_ej_' + i, tel: 'bt_tel_' + i };
+  const chip = { 'Respuesta rápida': '↩ Respuesta rápida', Enlace: '🔗 URL', Llamar: '✆ Llamar' }[x.tipo];
+  return `<div class="fila-bt"><span class="chip-tipo">${chip}</span><input name="${n.txt}" value="${esc(x.texto || '')}" maxlength="25" placeholder="Texto del botón">${idx != null ? `<small class="nota">índice ${idx}</small>` : ''}${quitar || ''}</div>
+    ${x.tipo === 'Enlace' ? `<input class="bt-url" name="${n.url}" value="${esc(x.url || '')}" maxlength="2000" placeholder="https://tu-sitio.com/oferta"><small class="nota">Debe iniciar con https://. Admite una variable, siempre al final: https://tu-sitio.com/pedido/{{1}}</small>${conVarUrl(x.url) ? `<label class="en-linea-ej"><span>{{1}}</span><input name="${n.ej}" value="${esc(x.ej || '')}" placeholder="Ejemplo del final del enlace (requerido)"></label>` : ''}` : ''}
+    ${x.tipo === 'Llamar' ? `<input class="bt-url" name="${n.tel}" value="${esc(x.tel || '')}" maxlength="20" placeholder="+52 81 5550 0101">` : ''}`;
+}
+function botonesHtml(b) {
+  const fin = botonesFinales(b), cuenta = t => b.botones.filter(x => x.tipo === t).length;
+  const filas = fin.map((x, idx) => x.sistema ? `<div class="fila-bt sistema"><span class="chip-tipo">${x.tipo === 'COPY_CODE' ? '⧉ Copiar código' : '↩ Respuesta rápida'}</span><span>${x.tipo === 'COPY_CODE' ? 'El código se pone al enviar' : esc(x.texto)}</span><small class="nota">índice ${idx} · lo agrega el sistema</small></div>` : filaBoton(b.botones[x.de], x.de, idx, btn('🗑', 'quitarBotonPl', 'enlace rojo icono-bt', `data-i="${x.de}" title="Quitar botón"`))).join('');
+  const puede = { 'Respuesta rápida': b.tipo === 'estandar' || b.tipo === 'cupon', Enlace: b.tipo !== 'cupon' || cuenta('Enlace') < 1, Llamar: b.tipo === 'estandar' && cuenta('Llamar') < 1 };
+  if (b.tipo === 'oferta') { puede['Respuesta rápida'] = false; puede.Enlace = cuenta('Enlace') < 1; }
+  if (cuenta('Enlace') >= 2) puede.Enlace = false;
+  const total = fin.length, adds = total < 10 ? Object.entries(puede).filter(([, v]) => v).map(([t]) => btn('+ ' + { 'Respuesta rápida': 'Respuesta rápida', Enlace: 'URL', Llamar: 'Llamar' }[t], 'agregarBotonPl', '', `data-t="${t}"`)).join('') : '';
+  return `<span class="et">Botones${b.tipo === 'oferta' ? ' (el de URL es obligatorio)' : ''}</span>${filas}<div class="adds-bt">${adds}<small class="nota">${total}/10</small></div><small class="nota">ⓘ Puedes combinar tipos hasta 10 botones, máx. 2 de enlace y 1 de llamada. WhatsApp los muestra agrupados por tipo; el índice es su posición.</small>`;
+}
+function tarjetasHtml(b) {
+  const quitarBt = k => btn('🗑', 'quitarBotonTarjetaPl', 'enlace rojo icono-bt', `data-k="${k}" title="Quitar este botón de todas las tarjetas"`);
+  return `<div class="campo"><span>Tarjetas *</span><div class="fila-cab"><small class="nota">Tipo de archivo de las tarjetas</small>${chipsPl('medioPl', ['Foto', 'Video'], b.medio)}<small class="nota der">${b.tarjetas.length}/10</small></div></div>
+    ${b.tarjetas.map((t, i) => `<div class="tarjeta-pl"><div class="bt-cab"><b>Tarjeta ${i + 1}</b><small class="nota">índice ${i}</small><span class="der">${btn('↑', 'moverTarjetaPl', 'icono-bt', `data-i="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} title="Subir"`)}${btn('↓', 'moverTarjetaPl', 'icono-bt', `data-i="${i}" data-d="1" ${i === b.tarjetas.length - 1 ? 'disabled' : ''} title="Bajar"`)}${btn('🗑', 'quitarTarjetaPl', 'icono-bt rojo', `data-i="${i}" title="Quitar tarjeta" ${b.tarjetas.length <= 2 ? 'disabled' : ''}`)}</span></div>
+      ${muestraPl('tM' + i, b.medio, '')}
+      <input name="tc_txt_${i}" value="${esc(t.texto)}" maxlength="160" placeholder="Texto de la tarjeta (opcional)"><div class="pie-campo"><small class="nota">${botonVar('tc_txt_' + i)}</small>${contador('tc_txt_' + i, t.texto, 160)}</div>${ejemplosHtml('tc_ej_' + i + '_', t.texto, t.ej)}
+      ${b.tBotones.map((tp, k) => filaBoton({ tipo: tp, ...(t.b[k] || {}) }, null, null, i === 0 ? quitarBt(k) : '', { txt: `tc_b_${k}_${i}`, url: `tc_u_${k}_${i}`, ej: `tc_uej_${k}_${i}`, tel: `tc_u_${k}_${i}` })).join('')}
+      ${i === 0 ? `<div class="adds-bt">${b.tBotones.length < 2 ? btn('+ URL', 'agregarBotonTarjetaPl', '', 'data-t="Enlace"') + btn('+ Respuesta rápida', 'agregarBotonTarjetaPl', '', 'data-t="Respuesta rápida"') : ''}<small class="nota">${b.tBotones.length}/2</small></div>` : ''}
+    </div>`).join('')}
+    ${b.tarjetas.length < 10 ? btn('+ Agregar tarjeta', 'agregarTarjetaPl') : ''}
+    <small class="nota">ⓘ De 2 a 10 tarjetas. Todas llevan archivo, del mismo tipo, y los mismos botones (se definen en la tarjeta 1); el texto de tarjeta va en todas o en ninguna.</small>`;
+}
+function camposPl(b) {
+  const t = b.tipo;
+  if (t === 'auth') return cmpSel('Cómo recibe el código', 'otp', ['Copiar código', 'Autocompletar con un toque (solo Android)', 'Sin toque (solo Android)'], b.otp) +
+    cmp('Texto del botón (25)', 'btnAuth', b.btnAuth, 'maxlength="25"') +
+    `<label class="check"><input type="checkbox" name="seg" ${b.seg ? 'checked' : ''}>Agregar "Por tu seguridad, no lo compartas"</label>` +
+    cmp('El código vence en (1 a 90 minutos; vacío = sin aviso)', 'min', b.min, 'type="number" min="1" max="90"') +
+    siHtml(`<div class="dos-campos">${cmp('Paquete de la app Android *', 'paquete', b.paquete, 'placeholder="com.empresa.app"')}${cmp('Firma de la app * (11 caracteres)', 'firma', b.firma, 'maxlength="11"')}</div>`, 'otp', 'Autocompletar|Sin toque') +
+    siHtml(`<label class="check"><input type="checkbox" name="terminos" ${b.terminos ? 'checked' : ''}>Acepto las condiciones de Meta para la entrega sin toque</label>`, 'otp', 'Sin toque') +
+    '<p class="nota">Meta pone el texto: "{{1}} es tu código de verificación." Aquí solo se elige el aviso de seguridad, la vigencia y la forma de entrega. Al enviar, el código va en el cuerpo y en el botón.</p>';
+  let h = '';
+  if (t === 'estandar' || t === 'cupon') {
+    const media = ['Foto', 'Video', 'Documento', 'Ubicación'].includes(b.encTipo);
+    h += `<div class="campo"><span>Encabezado${t === 'cupon' ? ' (opcional, solo texto)' : ''}</span>${media ? `<div class="enc-medio"><b>${esc(b.encTipo)}</b>${b.encTipo === 'Ubicación' ? '<small class="nota">La ubicación (latitud, longitud, nombre y dirección) se indica al enviar.</small>' : muestraPl('muestraH', b.encTipo, 'Archivo de muestra para Meta: ')}${btn('Quitar y usar texto', 'encabezadoPl', 'enlace', 'data-v="Texto"')}</div>` : `<input name="encTexto" value="${esc(b.encTexto)}" maxlength="60" placeholder="Encabezado de texto (opcional)"><div class="pie-campo"><small class="nota">${botonVar('encTexto')} Una variable como máximo.</small>${contador('encTexto', b.encTexto, 60)}</div>${ejemplosHtml('ej_h_', b.encTexto, b.ejH)}`}
+      ${t === 'estandar' && !media ? `<div class="chips-pl">${['Foto', 'Video', 'Documento', 'Ubicación'].map(o => `<button type="button" class="chip-pl" data-accion="encabezadoPl" data-v="${o}">${{ Foto: '🖼 Foto', Video: '🎬 Video', Documento: '📄 Documento', 'Ubicación': '📍 Ubicación' }[o]}</button>`).join('')}</div>` : ''}</div>`;
+  }
+  if (t === 'oferta') h += `<div class="campo"><span>Encabezado * (obligatorio)</span><div class="fila-cab">${chipsPl('medioPl', ['Foto', 'Video'], b.medio)}</div>${muestraPl('muestraH', b.medio, 'Archivo de muestra para Meta: ')}</div>` +
+    `<div class="dos-campos">${cmp('Texto de la oferta * (16)', 'oferta', b.oferta, 'maxlength="16"')}${cmp('Ejemplo de código (15, opcional)', 'codigo', b.codigo, 'maxlength="15"')}</div>` +
+    `<label class="check"><input type="checkbox" name="vence" ${b.vence ? 'checked' : ''}>Mostrar cuándo vence la oferta (la fecha se indica al enviar)</label>`;
+  h += areaPl(t === 'carrusel' ? 'Cuerpo del mensaje * <small class="nota">· va arriba del carrusel</small>' : 'Cuerpo del mensaje *', 'cuerpo', b.cuerpo, t === 'oferta' ? 600 : 1024) + ejemplosHtml('ej_b_', b.cuerpo, b.ejB);
+  if (t === 'estandar') h += textoPl('Pie de página (opcional)', 'pie', b.pie, 60, 'Ej. Responde STOP para baja', false);
+  if (t === 'cupon') h += cmp('Ejemplo del código del cupón * (20)', 'codigo', b.codigo, 'maxlength="20"') + '<p class="nota">El código real se indica al enviar; aquí va solo un ejemplo para la revisión de Meta. No funciona en WhatsApp Web.</p>';
+  h += t === 'carrusel' ? tarjetasHtml(b) : botonesHtml(b);
+  if (t === 'oferta') h += '<p class="nota">No lleva pie de página. En WhatsApp de escritorio se ve un aviso en lugar de la oferta.</p>';
+  return h;
+}
+
+/* ---------- Lectura del formulario hacia el borrador ---------- */
+function leerPl() {
+  const f = $('#formPl'), b = borPl; if (!f || !b) return b;
+  const v = Object.fromEntries(new FormData(f)), val = n => f.elements[n] ? v[n] ?? '' : undefined;
+  ['nombre', 'cat', 'idioma', 'numeroPl', 'encTexto', 'cuerpo', 'pie', 'oferta', 'codigo', 'otp', 'btnAuth', 'min', 'paquete', 'firma'].forEach(k => { const x = val(k); if (x !== undefined) b[k] = x; });
+  ['vence', 'seg', 'terminos'].forEach(k => { if (f.elements[k]) b[k] = !!v[k]; });
+  if (f.elements.encTexto && !['Foto', 'Video', 'Documento', 'Ubicación'].includes(b.encTipo)) b.encTipo = b.encTexto.trim() ? 'Texto' : 'Ninguno';
+  const lista = pref => [...f.querySelectorAll(`[name^="${pref}"]`)].map(i => i.value);
+  if (f.querySelector('[name^="ej_h_"]') || f.elements.encTexto) b.ejH = lista('ej_h_'); if ($('#ejw_ej_b_')) b.ejB = lista('ej_b_');
+  b.botones.forEach((x, i) => { if (f.elements['bt_txt_' + i]) x.texto = v['bt_txt_' + i] || ''; if (f.elements['bt_url_' + i]) x.url = v['bt_url_' + i] || ''; if (f.elements['bt_ej_' + i]) x.ej = v['bt_ej_' + i] || ''; if (f.elements['bt_tel_' + i]) x.tel = v['bt_tel_' + i] || ''; });
+  b.tarjetas.forEach((t, i) => { if (!f.elements['tc_txt_' + i]) return; t.texto = v['tc_txt_' + i] || ''; t.ej = lista('tc_ej_' + i + '_'); t.b = b.tBotones.map((tp, k) => ({ texto: v[`tc_b_${k}_${i}`] ?? '', url: v[`tc_u_${k}_${i}`] ?? '', ej: v[`tc_uej_${k}_${i}`] ?? ((t.b[k] || {}).ej || '') })); });
+  return b;
+}
+// Plantilla con la forma que usan la lista, el chat y "Probar plantilla".
+function datosPl() {
+  const b = leerPl(), fin = botonesFinales(b), pre = { QUICK_REPLY: '', URL: '↗ ', PHONE_NUMBER: '✆ ', COPY_CODE: '⧉ ', OTP: '⧉ ' };
+  const obj = arr => Object.fromEntries((arr || []).map((x, i) => [String(i + 1), x]));
+  const p = { tipo: b.tipo, nombre: b.nombre.trim(), cat: b.cat, idioma: b.idioma, uso: b.tipo === 'carrusel' ? 'Campaña' : b.uso, formato: TIPOS_PL.find(x => x.id === b.tipo).n, cuerpo: b.tipo === 'auth' ? textoAuth(b) : b.cuerpo, botones: (b.tipo === 'auth' && (b.otp || '').startsWith('Sin toque')) ? [] : fin.map(x => pre[x.tipo] + (x.tipo === 'COPY_CODE' ? 'Copiar código' : x.texto)), envios: 0, clics: 0, fmtVars: 'Numeradas',
+    ejemplos: { h: obj(b.ejH), b: obj(b.ejB), c: b.tarjetas.map(t => obj(t.ej)) }, btnVars: fin.map((x, i) => x.tipo === 'URL' && x.conVar ? { index: i, texto: x.texto, ej: x.ej || '' } : null).filter(Boolean) };
+  if (p.btnVars.length) { p.urlVar = true; p.ejemplos.u = p.btnVars[0].ej; }
+  if (b.tipo === 'estandar') { p.encTipo = b.encTipo; p.encabezado = b.encTipo === 'Texto' ? b.encTexto : ''; p.pie = b.pie; p.archivo = subidasPl.muestraH && subidasPl.muestraH.medio === b.encTipo ? subidasPl.muestraH : null; }
+  if (b.tipo === 'carrusel') { const pt = { Enlace: '↗ ', 'Respuesta rápida': '' }; p.encTipo = b.medio; p.tarjetas = b.tarjetas.map((t, i) => ({ archivo: subidasPl['tM' + i] || null, texto: t.texto, botones: b.tBotones.map((tp, k) => pt[tp] + ((t.b[k] || {}).texto || '')), btnVars: b.tBotones.map((tp, k) => tp === 'Enlace' && conVarUrl((t.b[k] || {}).url) ? { index: k, texto: (t.b[k] || {}).texto || '', ej: (t.b[k] || {}).ej || '' } : null).filter(Boolean) })); }
+  if (b.tipo === 'oferta') { p.encTipo = b.medio; p.archivo = subidasPl.muestraH && subidasPl.muestraH.medio === b.medio ? subidasPl.muestraH : null; p.oferta = b.oferta; p.vence = b.vence; p.codigo = b.codigo; }
+  if (b.tipo === 'cupon') { p.encabezado = b.encTipo === 'Texto' ? b.encTexto : ''; p.codigo = b.codigo; }
+  if (b.tipo === 'auth') { p.pie = b.min ? `Este código vence en ${b.min} minutos.` : ''; p.otp = b.otp; p.min = b.min ? +b.min : null; p.paquete = b.paquete; p.firma = b.firma; p.terminos = b.terminos; }
+  return p;
+}
+// Errores que Meta rechaza en las variables de un texto.
+function erroresTexto(texto, et, esCuerpo, max1) {
+  const ks = varsDe(texto), e = [], t = (texto || '').trim();
+  if (ks.some(k => !/^\d+$/.test(k))) e.push(et + ': las variables van numeradas: {{1}}, {{2}}…');
+  else if (ks.map(Number).sort((a, b) => a - b).some((k, i) => k !== i + 1)) e.push(et + ': las variables van en orden, empezando en {{1}}');
+  if (max1 && ks.length > 1) e.push(et + ': admite una sola variable');
+  if (esCuerpo && (/^\{\{\w+\}\}/.test(t) || /\{\{\w+\}\}[.!?…]?$/.test(t))) e.push(et + ': no puede empezar ni terminar con una variable');
+  if (/\}\}\s*\{\{/.test(t)) e.push(et + ': no puede haber dos variables seguidas');
+  return e;
+}
+function erroresPl(b) {
+  if (b.tipo === 'auth') return [];
+  let e = erroresTexto(b.cuerpo, 'Cuerpo', true, false);
+  if (b.encTipo === 'Texto' && b.encTexto) e = e.concat(erroresTexto(b.encTexto, 'Encabezado', false, true));
+  b.tarjetas.forEach((t, i) => { e = e.concat(erroresTexto(t.texto, 'Tarjeta ' + (i + 1), false, false)); });
+  if (b.pie && /\{\{/.test(b.pie)) e.push('El pie de página no admite variables');
+  [...b.botones.map(x => x.url), ...b.tarjetas.flatMap(t => t.b.map(x => x.url))].forEach(u => { if (u && /\{\{/.test(u.replace(/\{\{1\}\}$/, ''))) e.push('El enlace admite una sola variable, {{1}}, siempre al final'); });
+  return [...new Set(e)];
+}
+const pintaPreviaPl = () => { const d = $('#previaPl'); if (!d) return; d.innerHTML = previaPlantilla(datosPl()); const j = $('#jsonPl'); if (j) j.textContent = JSON.stringify(crearMeta(borPl), null, 2); };
+function pintaFaltanEj() {
+  const f = $('#formPl'); if (!f) return;
+  const marca = (campo, pref, texto, vals) => { const d = $('#fej_' + campo); if (d) d.innerHTML = faltanEjHtml(pref, texto, vals); };
+  marca('cuerpo', 'ej_b_', borPl.cuerpo, borPl.ejB);
+}
+// Al escribir: contadores, ejemplos del texto que cambió y avisos; al cambiar categoría se redibuja.
+function actualizaPl(ev) {
+  const f = $('#formPl'); if (!f || !borPl) return;
+  const n = ev && ev.target && ev.target.name || '';
+  leerPl();
+  if (n === 'cat') { const fs_ = formatosDe(borPl.cat); if (!fs_.includes(borPl.tipo)) { const nuevo = borNuevo(fs_[0], borPl.nombre); Object.assign(nuevo, { cat: borPl.cat, idioma: borPl.idioma, numeroPl: borPl.numeroPl }); borPl = nuevo; } return repintaPl(); }
+  if (/^(bt_url_|tc_u_)/.test(n)) { const tenia = ev.target.dataset.var === '1', tiene = conVarUrl(ev.target.value); if (tenia !== tiene) return repintaPl(); }
+  const c = f.querySelector(`[data-cont="${n}"]`); if (c && ev.target.maxLength > 0) c.textContent = ev.target.value.length + '/' + ev.target.maxLength;
+  const cambiaEj = { cuerpo: ['ej_b_', () => [borPl.cuerpo, borPl.ejB]], encTexto: ['ej_h_', () => [borPl.encTexto, borPl.ejH]] }[n] || (/^tc_txt_\d+$/.test(n) ? (() => { const i = +n.split('_')[2]; return ['tc_ej_' + i + '_', () => [borPl.tarjetas[i].texto, borPl.tarjetas[i].ej]]; })() : null);
+  if (cambiaEj) { const w = $('#ejw_' + cambiaEj[0]); if (w) { const [txt, vals] = cambiaEj[1](); w.outerHTML = ejemplosHtml(cambiaEj[0], txt, vals); } }
+  pintaFaltanEj();
+  if ($('#notaCat')) $('#notaCat').textContent = NOTA_CAT[borPl.cat] || '';
+  const err = $('#errPl'); if (err) err.innerHTML = erroresPl(borPl).map(x => '<div class="rojo">' + esc(x) + '</div>').join('');
+  pintaPreviaPl();
+}
+function repintaPl() { const c = $('.m-cuerpo'), sc = c ? c.scrollTop : 0; modalPlantilla(borPl.tipo, null, true); const c2 = $('.m-cuerpo'); if (c2) c2.scrollTop = sc; }
+function modalPlantilla(tipo = 'estandar', nombre = '', mantener = false) {
+  if (!mantener || !borPl) borPl = borNuevo(tipo, nombre);
+  const b = borPl, T = TIPOS_PL.find(x => x.id === b.tipo), ed = E.editPl && DB.plantillas.find(x => x.id === E.editPl);
+  const numOps = ed ? numerosDeCuenta(ed.cuenta).slice(0, 1) : DB.numeros, formatos = formatosDe(b.cat);
+  // Al editar, lo que no se puede cambiar se lee como dato, no como campos apagados.
+  const fijos = ed ? `<div class="datos-fijos"><div><small>Nombre</small><b>${esc(ed.nombre)}</b></div><div><small>Categoría</small><b>${esc(b.cat)}</b></div><div><small>Idioma</small><b>${esc(b.idioma)} (${idiomaMeta(b.idioma)})</b></div><div><small>Cuenta</small><b>${esc((DB.cuentas.find(w => w.id === ed.cuenta) || {}).nombre || '—')}</b></div><div><small>Formato</small><b>${FORMATO_PL[b.tipo]}</b></div><p class="nota">Meta no deja cambiar el nombre, la categoría, el idioma, la cuenta ni el formato de una plantilla; para eso se crea una nueva.</p></div>` : '';
+  abrirModal(ed ? 'Editar plantilla · ' + esc(ed.nombre) : 'Nueva plantilla', `<form id="formPl" class="dos"><div>
+      ${ed ? fijos : `${cmp('Nombre (sin espacios)', 'nombre', b.nombre, 'maxlength="512" placeholder="ej. oferta_julio"')}
+      <div class="dos-campos">${cmpSel('Categoría', 'cat', ['Marketing', 'Utilidad', 'Autenticación'], b.cat)}${cmpSel('Idioma', 'idioma', IDIOMAS_PL.map(x => x[0]), b.idioma)}</div>
+      <p class="nota" id="notaCat">${NOTA_CAT[b.cat]}</p>
+      <label class="campo"><span>Número (la plantilla queda en la cuenta de WhatsApp Business de ese número)</span><select name="numeroPl">${numOps.map(n => `<option value="${n.id}" ${n.id === b.numeroPl ? 'selected' : ''}>${esc(n.nombre)} · ${esc(cuentaDe(n.id).nombre)}</option>`).join('')}</select></label>
+      <div class="campo"><span>Formato del mensaje</span><div class="chips-pl">${formatos.map(id => `<button type="button" class="chip-pl ${id === b.tipo ? 'activo' : ''}" data-accion="tipoPl" data-t="${id}">${{ estandar: '▤ ', carrusel: '◫ ', oferta: '⏱ ', cupon: '⧉ ', auth: '🔐 ' }[id]}${FORMATO_PL[id]}</button>`).join('')}</div><small class="nota">${T.d}</small></div>`}
+      ${camposPl(b)}
+      ${b.tipo === 'auth' ? '' : `<div class="campo"><span>Tipo de plantilla</span>${b.tipo === 'carrusel' ? chipsPl('usoPl', ['Campaña'], 'Campaña') + '<small class="nota">🔒 Un carrusel solo se envía por campaña, así que no se ofrece en la Bandeja.</small>' : chipsPl('usoPl', USOS_PL, b.uso) + '<small class="nota">Iniciar conversación y Seguimiento se ofrecen en la Bandeja; Campaña solo en campañas.</small>'}</div>`}
+      <div id="errPl"></div>
+      ${ed ? '<p class="nota">Al guardar, la plantilla vuelve a revisión de Meta; mientras tanto se puede seguir usando la versión aprobada.</p>' : `<details class="no-ofrece"><summary>Tipos de Meta que este producto no ofrece</summary>${NO_SE_OFRECEN.map(([a, c]) => `<div>${a}: ${c}.</div>`).join('')}</details>`}
+    </div><div><span class="et">Vista previa (WhatsApp)</span><div class="previa" id="previaPl"></div><p class="nota">ⓘ Meta suele aprobar en minutos a 24 h.</p><details class="nota"><summary>Datos que se mandan a Meta al crearla</summary><pre class="json-pl" id="jsonPl"></pre></details></div></form>`,
+    btn('Cancelar', 'cerrarModal') + btn(ed ? 'Guardar y enviar a revisión' : '➤ Enviar a aprobación', 'guardarPl', 'primario'), 'ancho extra');
+  aplicarSi();
+  // marca los enlaces que ya llevan variable, para redibujar solo cuando eso cambia
+  document.querySelectorAll('#formPl .bt-url').forEach(i => { i.dataset.var = conVarUrl(i.value) ? '1' : '0'; });
+  actualizaPl();
+}
+
+/* ---------- Archivos ---------- */
 const ACEPTA_PL = { Foto: [/^image\/(jpeg|png)$/, 5, 'JPG o PNG'], Video: [/^video\/mp4$/, 16, 'MP4'], Documento: [/^application\/pdf$/, 100, 'PDF'] };
-function medioDeSubida(nombre) { const f = $('#formPl'); if (nombre === 'muestraV') return 'Video'; if (nombre === 'muestraD') return 'Documento'; return f && f.elements.medio ? f.elements.medio.value : 'Foto'; }
+function medioDeSubida(nombre) { if (nombre === 'muestraH' && borPl.tipo === 'estandar') return borPl.encTipo; return borPl.medio; }
 function subirPl(input) {
   const a = input.files[0], nombre = input.dataset.subir; if (!a) return;
   const medio = medioDeSubida(nombre), [tipo, mb, txt] = ACEPTA_PL[medio];
-  if (!tipo.test(a.type)) return aviso(`Este encabezado es de ${medio.toLowerCase()}: sube un archivo ${txt}`);
+  if (!tipo.test(a.type)) return aviso(`Este archivo debe ser ${medio.toLowerCase()}: sube un ${txt}`);
   if (a.size > mb * 1024 * 1024) return aviso(`El archivo pesa más de ${mb} MB, el máximo de Meta para ${medio.toLowerCase()}`);
   if (subidasPl[nombre]) URL.revokeObjectURL(subidasPl[nombre].url);
   subidasPl[nombre] = { nombre: a.name, url: URL.createObjectURL(a), medio };
-  const d = $('#nom_' + nombre); if (d) d.textContent = a.name;
-  actualizaPl();
+  repintaPl();
 }
-const botonesEnlace = max => Array.from({ length: max }, (_, i) => `<div class="f-grupo"><h4>Botón de enlace ${max > 1 ? i + 1 + ' ' : ''}${max > 1 || i ? '(opcional)' : ''}</h4><div class="dos-campos">${cmp('Texto del botón (25)', 'urlTxt' + i, '', 'maxlength="25" placeholder="Ver más"')}${cmpSel('Tipo de enlace', 'urlTipo' + i, ['Fijo', 'Con variable al final'], 'Fijo')}</div>${cmp('Enlace (hasta 2,000; empieza con https://)', 'urlUrl' + i, '', 'maxlength="2000" placeholder="https://tienda.com/pedido/"')}</div>`).join('');
-const FMT_VARS = () => '<p class="nota">Variables: siempre numeradas, {{1}}, {{2}}, {{3}}…, en orden desde {{1}}. El cuerpo no puede empezar ni terminar con una variable, ni tener dos seguidas.</p>';
-function camposPl(t) {
-  const baja = ' Responde BAJA para no recibir más mensajes.', ejemplos = '<div id="ejemplosPl"></div>';
-  if (t === 'estandar') return FMT_VARS() +
-    cmpSel('Encabezado (opcional)', 'encTipo', ['Ninguno', 'Texto', 'Foto', 'Video', 'Documento', 'Ubicación'], 'Ninguno') +
-    siHtml(cmp('Texto del encabezado (60, una variable como máximo)', 'encTexto', '', 'maxlength="60"'), 'encTipo', 'Texto') +
-    siHtml(muestraPl('Foto del encabezado', 'muestraF', 'Foto'), 'encTipo', 'Foto') + siHtml(muestraPl('Video del encabezado', 'muestraV', 'Video'), 'encTipo', 'Video') + siHtml(muestraPl('Documento del encabezado', 'muestraD', 'Documento'), 'encTipo', 'Documento') +
-    siHtml('<p class="nota">La ubicación (latitud, longitud, nombre y dirección) se indica al enviar la plantilla.</p>', 'encTipo', 'Ubicación') +
-    cmpArea('Cuerpo * (1,024)', 'cuerpo', 'Hola {{1}}, tenemos novedades para ti esta semana.', 1024) + ejemplos +
-    cmp('Pie de página (opcional, 60, sin variables)', 'pie', '', 'maxlength="60"') +
-    '<span class="et">Botones (opcional, hasta 10 en total)</span>' +
-    cmpArea('Respuestas rápidas, una por línea (25 caracteres cada una)', 'rapidas', 'Me interesa', 300) +
-    botonesEnlace(2) +
-    `<div class="f-grupo"><h4>Botón de llamada (opcional, solo uno)</h4><div class="dos-campos">${cmp('Texto del botón (25)', 'telTxt', '', 'maxlength="25" placeholder="Llamar"')}${cmp('Teléfono con + y código de país (20)', 'telNum', '', 'maxlength="20" placeholder="+52 81 5550 0101"')}</div></div>` +
-    '<p class="nota">Límites de Meta: hasta 10 botones, como máximo 2 de enlace y 1 de llamada. Las respuestas rápidas se muestran juntas, antes o después de los demás, nunca mezcladas. WhatsApp enseña 3 botones y el resto en "Ver todas las opciones".</p>';
-  if (t === 'carrusel') return FMT_VARS() +
-    cmpArea('Texto principal * (1,024)', 'cuerpo', 'Hola {{1}}, mira lo nuevo de este mes.' + baja, 1024) + ejemplos +
-    `<div class="dos-campos">${cmpSel('Número de tarjetas (2 a 10)', 'nTarjetas', ['2', '3', '4', '5', '6', '7', '8', '9', '10'], '3')}${cmpSel('Encabezado de las tarjetas', 'medio', ['Foto', 'Video'], 'Foto')}</div>` +
-    `<div class="dos-campos">${cmpSel('Botón 1 de cada tarjeta *', 'tTipo1', ['Respuesta rápida', 'Enlace', 'Llamar'], 'Respuesta rápida')}${cmpSel('Botón 2 de cada tarjeta', 'tTipo2', ['Ninguno', 'Respuesta rápida', 'Enlace', 'Llamar'], 'Ninguno')}</div>` +
-    '<p class="nota">Todas las tarjetas llevan lo mismo: el mismo tipo de encabezado y los mismos tipos de botón en el mismo orden. Cada tarjeta tiene su archivo de muestra, su texto (opcional, 160) y el texto de sus botones. El carrusel no lleva encabezado, pie ni botones propios.</p>' +
-    Array.from({ length: 10 }, (_, i) => `<div class="f-grupo tarjeta-pl" data-i="${i}"><h4>Tarjeta ${i + 1}</h4>${muestraPl('Archivo de la tarjeta', 'tM' + i, 'Foto')}${cmp('Texto de la tarjeta (160)', 'tTexto' + i, ['Velas de temporada', 'Difusores nuevos', 'Kits de regalo'][i] || '', 'maxlength="160"')}<div class="dos-campos">${cmp('Texto del botón 1 (25)', 'tB1_' + i, 'Ver producto', 'maxlength="25"')}${cmp('Texto del botón 2 (25)', 'tB2_' + i, '', 'maxlength="25"')}</div>${cmp('Enlace o teléfono, si algún botón lo usa', 'tU' + i, '', 'placeholder="https://tienda.com/producto o +52 81…"')}</div>`).join('');
-  if (t === 'oferta') return FMT_VARS() +
-    cmpSel('Encabezado * (obligatorio)', 'medio', ['Foto', 'Video'], 'Foto') + muestraPl('Archivo del encabezado', 'muestraF', 'Foto') +
-    `<div class="dos-campos">${cmp('Texto de la oferta * (16)', 'oferta', '20% de descuento'.slice(0, 16), 'maxlength="16"')}${cmp('Ejemplo de código (15, opcional)', 'codigo', 'OTONO20', 'maxlength="15"')}</div>` +
-    '<label class="check"><input type="checkbox" name="vence" checked>Mostrar cuándo vence la oferta (la fecha se indica al enviar)</label>' +
-    cmpArea('Cuerpo * (600)', 'cuerpo', 'Hola {{1}}, solo esta semana en toda la tienda.' + baja, 600) + ejemplos +
-    botonesEnlace(1) +
-    '<p class="nota">El código se copia con un botón y el real se indica al enviar; si lo dejas vacío, no lleva botón de copiar. El botón de enlace es obligatorio. No lleva pie de página. En WhatsApp de escritorio se ve un aviso en lugar de la oferta.</p>';
-  if (t === 'cupon') return FMT_VARS() +
-    cmp('Encabezado de texto (opcional, 60)', 'encTexto', 'Tu cupón de bienvenida', 'maxlength="60"') +
-    cmpArea('Cuerpo * (1,024)', 'cuerpo', 'Hola {{1}}, usa este cupón en tu próxima compra.', 1024) + ejemplos +
-    cmp('Ejemplo del código del cupón * (20)', 'codigo', 'BIENVENIDA10', 'maxlength="20"') +
-    cmp('Botón de respuesta rápida (opcional, 25)', 'rapidas', 'Quiero comprar', 'maxlength="25"') + botonesEnlace(1) +
-    '<p class="nota">El código real se indica al enviar; aquí va solo un ejemplo para la revisión de Meta. El botón "Copiar código" lo agrega el sistema. No funciona en WhatsApp Web.</p>';
-  if (t === 'auth') return cmpSel('Cómo recibe el código', 'otp', ['Copiar código', 'Autocompletar con un toque (solo Android)', 'Sin toque (solo Android)'], 'Copiar código') +
-    cmp('Texto del botón (25)', 'btnAuth', 'Copiar código', 'maxlength="25"') +
-    '<label class="check"><input type="checkbox" name="seg" checked>Agregar "Por tu seguridad, no lo compartas"</label>' +
-    cmp('El código vence en (1 a 90 minutos; vacío = sin aviso)', 'min', '10', 'type="number" min="1" max="90"') +
-    siHtml(`<div class="dos-campos">${cmp('Paquete de la app Android *', 'paquete', '', 'placeholder="com.empresa.app"')}${cmp('Firma de la app * (11 caracteres)', 'firma', '', 'maxlength="11"')}</div><p class="nota">Datos de la app Android del cliente, necesarios para esta forma de entrega.</p>`, 'otp', 'Autocompletar|Sin toque') +
-    siHtml('<label class="check"><input type="checkbox" name="terminos">Acepto las condiciones de Meta para la entrega sin toque</label>', 'otp', 'Sin toque') +
-    '<p class="nota">Meta pone el texto: "{{1}} es tu código de verificación." Aquí solo se elige el aviso de seguridad, la vigencia y la forma de entrega. Al enviar, el código va en el cuerpo y en el botón.</p>';
-  return '';
-}
-// Variables y ejemplos: se detectan del encabezado de texto, del cuerpo, de las tarjetas y de los enlaces con variable.
-function variablesPl(f) {
-  const nom = false, vars = [];
-  if (f.encTexto && (f.tipo !== 'estandar' || f.encTipo === 'Texto')) vars.push({ id: 'h', et: 'Encabezado', t: f.encTexto });
-  if (f.tipo !== 'auth') vars.push({ id: 'b', et: 'Cuerpo', t: f.cuerpo || '' });
-  if (f.tipo === 'carrusel') for (let i = 0; i < +f.nTarjetas; i++) vars.push({ id: 'c' + i, et: 'Tarjeta ' + (i + 1), t: f['tTexto' + i] || '' });
-  vars.forEach(v => { v.ks = varsDe(v.t); });
-  for (let i = 0; i < 2; i++) if ((f['urlTipo' + i] || '').startsWith('Con variable') && f['urlTxt' + i]) vars.push({ id: 'u' + i, et: 'Final del enlace "' + f['urlTxt' + i] + '"', t: '', ks: ['1'], url: true });
-  return { nom, vars };
-}
-function erroresVars(f) {
-  const { nom, vars } = variablesPl(f), err = [];
-  for (const v of vars.filter(x => !x.url)) {
-    const t = v.t.trim();
-    if (v.id === 'h' && v.ks.length > 1) err.push('El encabezado admite una sola variable');
-    if (nom && v.ks.some(k => !/^[a-z_][a-z0-9_]*$/.test(k))) err.push(v.et + ': las variables con nombre van en minúsculas y guion bajo, por ejemplo {{nombre}}');
-    if (!nom && v.ks.some(k => !/^\d+$/.test(k))) err.push(v.et + ': las variables van numeradas: {{1}}, {{2}}…');
-    if (!nom && v.ks.length && v.ks.every(k => /^\d+$/.test(k)) && v.ks.map(Number).sort((a, b) => a - b).some((k, i) => k !== i + 1)) err.push(v.et + ': las variables numeradas van en orden, empezando en {{1}}');
-    if (v.id === 'b' && (/^\{\{\w+\}\}/.test(t) || /\{\{\w+\}\}[.!?…]?$/.test(t))) err.push('El cuerpo no puede empezar ni terminar con una variable');
-    if (/\}\}\s*\{\{/.test(t)) err.push(v.et + ': no puede haber dos variables seguidas');
-  }
-  return err;
-}
-function pintaEjemplos() {
-  const d = $('#ejemplosPl'); if (!d) return;
-  const f = Object.fromEntries(new FormData($('#formPl'))), { vars } = variablesPl(f), previos = Object.fromEntries([...d.querySelectorAll('input')].map(i => [i.name, i.value]));
-  const campos = vars.flatMap(v => v.ks.map(k => { const n = 'ej_' + v.id + '_' + k; return `<label class="campo"><span>Ejemplo de ${esc(v.et)}${v.url ? '' : ' {{' + esc(k) + '}}'} *</span><input name="${n}" value="${esc(previos[n] ?? (v.url ? '4821' : ''))}" required></label>`; }));
-  d.innerHTML = campos.length ? '<span class="et">Ejemplos de las variables (Meta los exige)</span>' + campos.join('') : '<p class="nota">Sin variables: no hace falta poner ejemplos.</p>';
-}
-function datosPl() {
-  const f = Object.fromEntries(new FormData($('#formPl'))), t = f.tipo, lineas = s => (s || '').split('\n').map(x => x.trim()).filter(Boolean);
-  const p = { tipo: t, nombre: (f.nombre || '').trim(), cat: f.cat, idioma: f.idioma || 'Español (MX)', formato: TIPOS_PL.find(x => x.id === t).n, cuerpo: f.cuerpo || '', botones: [], envios: 0, clics: 0, fmtVars: 'Numeradas' };
-  const { vars } = variablesPl(f);
-  p.ejemplos = { h: {}, b: {}, c: [] };
-  vars.forEach(v => v.ks.forEach(k => { const ej = f['ej_' + v.id + '_' + k] || ''; if (v.id === 'h' || v.id === 'b') p.ejemplos[v.id][k] = ej; else if (v.url) p.ejemplos.u = ej; else { const i = +v.id.slice(1); p.ejemplos.c[i] = { ...(p.ejemplos.c[i] || {}), [k]: ej }; } }));
-  const enlaces = n => Array.from({ length: n }, (_, i) => f['urlTxt' + i] ? '↗ ' + f['urlTxt' + i] : '').filter(Boolean);
-  const din = [0, 1].find(i => (f['urlTipo' + i] || '').startsWith('Con variable') && f['urlTxt' + i]); if (din !== undefined) p.urlVar = true;
-  const arch = k => subidasPl[k] || null;
-  if (t === 'estandar') { p.archivo = arch({ Foto: 'muestraF', Video: 'muestraV', Documento: 'muestraD' }[f.encTipo]); p.encTipo = f.encTipo; p.encabezado = f.encTipo === 'Texto' ? f.encTexto : ''; p.pie = f.pie; p.botones = [...lineas(f.rapidas), ...enlaces(2)]; if (f.telTxt) p.botones.push('✆ ' + f.telTxt); if (f.cat === 'Marketing' && !p.botones.includes('Darme de baja')) p.botones.push('Darme de baja'); }
-  if (t === 'carrusel') { p.encTipo = f.medio; const tipos = [f.tTipo1, f.tTipo2].filter(x => x && x !== 'Ninguno'), pre = { Enlace: '↗ ', Llamar: '✆ ', 'Respuesta rápida': '' }; p.tarjetas = Array.from({ length: +f.nTarjetas }, (_, i) => ({ archivo: arch('tM' + i), texto: f['tTexto' + i] || '', botones: tipos.map((x, j) => pre[x] + (f['tB' + (j + 1) + '_' + i] || '')) })); }
-  if (t === 'oferta') { p.archivo = arch('muestraF'); p.encTipo = f.medio; p.oferta = f.oferta; p.vence = !!f.vence; p.codigo = f.codigo; p.botones = [f.codigo ? '⧉ Copiar código' : '', ...enlaces(1)].filter(Boolean); }
-  if (t === 'cupon') { p.encabezado = f.encTexto; p.codigo = f.codigo; p.botones = [f.rapidas, f.codigo ? '⧉ Copiar código' : '', ...enlaces(1), 'Darme de baja'].filter(Boolean); }
-  if (t === 'auth') { p.cuerpo = '{{1}} es tu código de verificación.' + (f.seg ? ' Por tu seguridad, no lo compartas.' : ''); p.pie = f.min ? `Este código vence en ${f.min} minutos.` : ''; p.botones = (f.otp || '').startsWith('Sin toque') ? [] : ['⧉ ' + (f.btnAuth || 'Copiar código')]; p.otp = f.otp; p.min = f.min ? +f.min : null; p.paquete = f.paquete; p.firma = f.firma; p.terminos = !!f.terminos; }
-  return p;
-}
-const pintaPreviaPl = () => { const d = $('#previaPl'); if (d) d.innerHTML = previaPlantilla(datosPl()); };
-function actualizaPl(ev) {
-  const f = $('#formPl'); if (!f) return;
-  if (f.elements.nTarjetas) f.querySelectorAll('.tarjeta-pl').forEach(el => el.classList.toggle('oculto', +el.dataset.i >= +f.elements.nTarjetas.value));
-  if (f.elements.cat && $('#notaCat')) $('#notaCat').textContent = NOTA_CAT[f.elements.cat.value] || '';
-  const n = ev && ev.target && ev.target.name || '';
-  if (!ev || ['cuerpo', 'encTexto', 'encTipo', 'nTarjetas'].includes(n) || /^(tTexto|urlTipo|urlTxt)/.test(n)) pintaEjemplos();
-  const err = $('#errPl'); if (err) { const e = erroresVars(Object.fromEntries(new FormData(f))); err.innerHTML = e.map(x => '<div class="rojo">' + esc(x) + '</div>').join(''); }
-  pintaPreviaPl();
-}
-const NO_SE_OFRECEN = [['Catálogo, Varios productos, Un producto y Carrusel de productos', 'requieren un catálogo de productos en Meta'], ['Permiso para llamar y botón de llamada por WhatsApp', 'requieren llamadas de WhatsApp, que son de una fase posterior'], ['Con formulario (Flows)', 'fuera del alcance'], ['Pedidos y pagos dentro de WhatsApp', 'fuera del alcance']];
-function modalPlantilla(tipo = 'estandar', nombre = '') {
-  const T = TIPOS_PL.find(x => x.id === tipo), cat0 = T.cats[0];
-  abrirModal('Crear plantilla', `<form id="formPl" class="dos"><div>
-      <span class="et">1. Elige el tipo de plantilla</span><input type="hidden" name="tipo" value="${tipo}">
-      <div class="tipos-pl">${TIPOS_PL.filter(x => !x.bloqueado).map(x => `<button type="button" class="${x.id === tipo ? 'activo' : ''}" data-accion="tipoPl" data-t="${x.id}">${x.n.split(' (')[0]}</button>`).join('')}</div>
-      <p class="nota">${T.d}</p>
-      <div class="no-ofrece"><b>Este producto no ofrece estos tipos de Meta:</b>${NO_SE_OFRECEN.map(([a, b]) => `<div>${a}: ${b}.</div>`).join('')}</div>
-      <span class="et">2. Datos generales</span>
-      <label class="campo"><span>Número (la plantilla queda en su cuenta y la comparten sus números)</span><select name="numeroPl">${DB.numeros.map(n => `<option value="${n.id}" ${n.id === (E.numPl || DB.numeros[0].id) ? 'selected' : ''}>${esc(n.nombre)} · ${esc(cuentaDe(n.id).nombre)}</option>`).join('')}</select></label>
-      ${cmp('Nombre * (minúsculas, números y guion bajo; hasta 512)', 'nombre', nombre, 'maxlength="512" placeholder="promo_octubre"')}
-      <div class="dos-campos">${cmpSel('Categoría *', 'cat', T.cats, cat0)}${cmpSel('Idioma *', 'idioma', IDIOMAS_PL.map(x => x[0]), 'Español (MX)')}</div>
-      <p class="nota" id="notaCat">${NOTA_CAT[cat0]}</p><p class="nota">Una plantilla con el mismo nombre puede tener varios idiomas; Meta aprueba cada idioma por separado.</p>
-      <span class="et">3. Contenido</span>
-      ${camposPl(tipo)}
-      <div id="errPl"></div>
-    </div><div><span class="et">Vista previa</span><div class="previa" id="previaPl"></div><p class="nota">Meta revisa la plantilla antes de que se pueda usar; normalmente responde en minutos y puede tardar hasta 24 horas. Si la rechaza, se muestra el motivo.</p></div></form>`,
-    btn('Cancelar', 'cerrarModal') + btn('Enviar a aprobación', 'guardarPl', 'primario'), 'ancho extra');
-  aplicarSi();
-  actualizaPl();
-}
+
+/* ---------- Guardar ---------- */
 function guardarPl() {
-  const f = Object.fromEntries(new FormData($('#formPl'))), p = datosPl(), cuenta = N(f.numeroPl).cuenta;
+  const b = leerPl(), p = datosPl(), ed = E.editPl && DB.plantillas.find(x => x.id === E.editPl), cuenta = ed ? ed.cuenta : N(b.numeroPl).cuenta, fin = botonesFinales(b);
   if (!/^[a-z0-9_]{1,512}$/.test(p.nombre)) return aviso('El nombre solo puede llevar minúsculas, números y guion bajo, sin espacios');
-  const ed = E.editPl && DB.plantillas.find(x => x.id === E.editPl);
   if (!ed && DB.plantillas.some(x => x.cuenta === cuenta && x.nombre === p.nombre && (x.idioma || 'Español (MX)') === p.idioma)) return aviso('Ya hay una plantilla con ese nombre y ese idioma en esta cuenta');
-  if (p.tipo !== 'auth' && !p.cuerpo.trim()) return aviso('El cuerpo es obligatorio');
-  const ev = erroresVars(f); if (ev.length) return aviso(ev[0]);
-  const faltaEj = [...$('#formPl').querySelectorAll('#ejemplosPl input')].find(i => !i.value.trim()); if (faltaEj) return aviso('Falta un ejemplo: ' + faltaEj.closest('label').querySelector('span').textContent.replace(' *', ''));
-  if (p.tipo === 'estandar' && f.encTipo === 'Texto' && !(f.encTexto || '').trim()) return aviso('Falta el texto del encabezado');
-  if (!ed && ['Foto', 'Video', 'Documento'].includes(p.encTipo) && !p.tarjetas && !p.archivo) return aviso('Sube el archivo de muestra del encabezado');
-  if (!ed && p.tarjetas) { const sin = p.tarjetas.findIndex(x => !x.archivo || x.archivo.medio !== p.encTipo); if (sin >= 0) return aviso('Tarjeta ' + (sin + 1) + ': sube su archivo de ' + p.encTipo.toLowerCase()); }
-  if (p.archivo && p.archivo.medio !== p.encTipo) return aviso('El archivo subido no es de ' + p.encTipo.toLowerCase() + '; súbelo de nuevo');
-  if (p.pie && /\{\{/.test(p.pie)) return aviso('El pie de página no admite variables');
-  for (let i = 0; i < 2; i++) if (f['urlTxt' + i] && !/^https:\/\/\S+$/.test(f['urlUrl' + i] || '')) return aviso('El botón de enlace necesita un enlace que empiece con https://');
-  if (f.telTxt && !/^\+\d[\d ]{7,19}$/.test(f.telNum || '')) return aviso('El botón de llamada necesita el teléfono con + y código de país');
-  if (p.tipo === 'oferta' && !p.oferta) return aviso('Falta el texto de la oferta');
-  if (p.tipo === 'oferta' && !f.urlTxt0) return aviso('La oferta por tiempo limitado necesita su botón de enlace');
-  if (p.tipo === 'cupon' && !p.codigo) return aviso('Falta el ejemplo del código del cupón');
-  if (p.tipo === 'carrusel') {
-    if (f.tTipo1 === f.tTipo2 && f.tTipo1 !== 'Respuesta rápida') return aviso('Los dos botones de la tarjeta no pueden ser del mismo tipo, salvo respuestas rápidas');
-    const fal = p.tarjetas.findIndex(x => x.botones.some(b => !b.replace(/^[↗✆] /, '').trim())); if (fal >= 0) return aviso('Tarjeta ' + (fal + 1) + ': falta el texto de un botón');
-    const usaLiga = [f.tTipo1, f.tTipo2].some(x => x === 'Enlace' || x === 'Llamar'); if (usaLiga) { const sin = p.tarjetas.findIndex((x, i) => !(f['tU' + i] || '').trim()); if (sin >= 0) return aviso('Tarjeta ' + (sin + 1) + ': falta el enlace o teléfono del botón'); }
+  if (b.tipo !== 'auth' && !b.cuerpo.trim()) return aviso('El cuerpo es obligatorio');
+  const err = erroresPl(b); if (err.length) return aviso(err[0]);
+  const faltaEj = [...$('#formPl').querySelectorAll('.ejemplos-pl input')].find(i => !i.value.trim()); if (faltaEj) return aviso('Declara un ejemplo para cada variable');
+  if (!ed && ((b.tipo === 'estandar' && ['Foto', 'Video', 'Documento'].includes(b.encTipo)) || b.tipo === 'oferta') && !p.archivo) return aviso('Sube el archivo de muestra del encabezado');
+  for (const x of fin.filter(y => !y.sistema)) {
+    if (!(x.texto || '').trim()) return aviso('Falta el texto de un botón');
+    if (x.tipo === 'URL' && !/^https:\/\/\S+$/.test(x.url || '')) return aviso('El botón «' + x.texto + '» necesita un enlace que empiece con https://');
+    if (x.tipo === 'URL' && x.conVar && !(x.ej || '').trim()) return aviso('Falta el ejemplo del final del enlace del botón «' + x.texto + '»');
+    if (x.tipo === 'PHONE_NUMBER' && !/^\+\d[\d ]{7,19}$/.test(x.tel || '')) return aviso('El botón «' + x.texto + '» necesita el teléfono con + y código de país');
   }
-  if (p.tipo === 'auth' && p.min !== null && !(p.min >= 1 && p.min <= 90)) return aviso('La vigencia del código va de 1 a 90 minutos');
-  if (p.tipo === 'auth' && p.otp !== 'Copiar código' && (!p.paquete || !p.firma)) return aviso('Para autocompletar o sin toque faltan el paquete y la firma de la app Android');
-  if (p.tipo === 'auth' && (p.otp || '').startsWith('Sin toque') && !p.terminos) return aviso('Para la entrega sin toque hay que aceptar las condiciones de Meta');
-  if ((f.rapidas || '').split('\n').some(x => x.trim().length > 25)) return aviso('Cada respuesta rápida es de hasta 25 caracteres');
-  if (p.botones.length > 10) return aviso('Meta permite máximo 10 botones, contando "Darme de baja"');
-  if (ed) { const antes = ed.estado; Object.assign(ed, { ...p, id: ed.id, cuenta: ed.cuenta, cat: ed.cat, idioma: ed.idioma || p.idioma, envios: ed.envios, clics: ed.clics, ventas: ed.ventas, motivo: '', estado: 'En revisión', ediciones: [...(ed.ediciones || []), ...(antes === 'Aprobada' ? [Date.now()] : [])] }); E.editPl = null; cerrarModal(); render(); return aviso('Cambios enviados a revisión de Meta'); }
-  DB.plantillas.unshift({ ...p, id: 'p' + Date.now(), cuenta, estado: 'En revisión' }); cerrarModal(); render(); aviso('Enviada a aprobación de Meta');
+  if (fin.length > 10) return aviso('Meta permite máximo 10 botones, contando los que agrega el sistema');
+  if (b.tipo === 'oferta' && !b.oferta.trim()) return aviso('Falta el texto de la oferta');
+  if (b.tipo === 'oferta' && !fin.some(x => x.tipo === 'URL')) return aviso('La oferta por tiempo limitado necesita su botón de URL');
+  if (b.tipo === 'cupon' && !b.codigo.trim()) return aviso('Falta el ejemplo del código del cupón');
+  if (b.tipo === 'carrusel') {
+    if (b.tarjetas.length < 2 || b.tarjetas.length > 10) return aviso('El carrusel lleva de 2 a 10 tarjetas');
+    if (!b.tBotones.length) return aviso('Las tarjetas llevan al menos un botón');
+    const conTexto = b.tarjetas.filter(t => t.texto.trim()).length; if (conTexto && conTexto < b.tarjetas.length) return aviso('El texto de tarjeta va en todas o en ninguna');
+    for (let i = 0; i < b.tarjetas.length; i++) {
+      const t = b.tarjetas[i];
+      if (!ed && (!subidasPl['tM' + i] || subidasPl['tM' + i].medio !== b.medio)) return aviso('Tarjeta ' + (i + 1) + ': sube su archivo de ' + b.medio.toLowerCase());
+      for (let k = 0; k < b.tBotones.length; k++) { const x = t.b[k] || {}; if (!(x.texto || '').trim()) return aviso('Tarjeta ' + (i + 1) + ': falta el texto del botón ' + (k + 1)); if (b.tBotones[k] === 'Enlace' && !/^https:\/\/\S+$/.test(x.url || '')) return aviso('Tarjeta ' + (i + 1) + ': el botón ' + (k + 1) + ' necesita un enlace que empiece con https://'); if (b.tBotones[k] === 'Enlace' && conVarUrl(x.url) && !(x.ej || '').trim()) return aviso('Tarjeta ' + (i + 1) + ': falta el ejemplo del final del enlace'); }
+    }
+    for (let k = 0; k < b.tBotones.length; k++) if (b.tBotones[k] === 'Enlace') { const vars = b.tarjetas.map(t => conVarUrl((t.b[k] || {}).url)); if (vars.some(Boolean) && !vars.every(Boolean)) return aviso('Si el enlace de una tarjeta lleva variable, el de todas debe llevarla'); }
+  }
+  if (b.tipo === 'auth' && b.min !== '' && !(+b.min >= 1 && +b.min <= 90)) return aviso('La vigencia del código va de 1 a 90 minutos');
+  if (b.tipo === 'auth' && b.otp !== 'Copiar código' && (!b.paquete || !b.firma)) return aviso('Para autocompletar o sin toque faltan el paquete y la firma de la app Android');
+  if (b.tipo === 'auth' && b.otp.startsWith('Sin toque') && !b.terminos) return aviso('Para la entrega sin toque hay que aceptar las condiciones de Meta');
+  const guardado = { ...p, bor: JSON.parse(JSON.stringify(b)), meta: crearMeta(b) };
+  if (ed) { const antes = ed.estado; Object.assign(ed, { ...guardado, id: ed.id, cuenta: ed.cuenta, cat: ed.cat, idioma: ed.idioma || p.idioma, envios: ed.envios, clics: ed.clics, ventas: ed.ventas, motivo: '', estado: 'En revisión', archivo: p.archivo || ed.archivo, ediciones: [...(ed.ediciones || []), ...(antes === 'Aprobada' ? [Date.now()] : [])] }); E.editPl = null; cerrarModal(); render(); return aviso('Cambios enviados a revisión de Meta'); }
+  DB.plantillas.unshift({ ...guardado, id: 'p' + Date.now(), cuenta, estado: 'En revisión' }); cerrarModal(); render(); aviso('Enviada a aprobación de Meta');
+}
+// Borrador a partir de una plantilla ya hecha (para editarla).
+function borDesdePlantilla(p) {
+  if (p.bor && p.bor.tBotones) return JSON.parse(JSON.stringify(p.bor));
+  const tipo = p.tipo || ({ 'Carrusel': 'carrusel', 'Oferta por tiempo limitado': 'oferta', 'Código de cupón': 'cupon', 'Autenticación': 'auth' }[p.formato] || 'estandar'), b = borNuevo(tipo, p.nombre);
+  const arr = o => Object.keys(o || {}).sort((x, y) => x - y).map(k => o[k]), ej = p.ejemplos || {};
+  Object.assign(b, { cat: p.cat, idioma: p.idioma || 'Español (MX)', uso: p.uso || 'Campaña', cuerpo: tipo === 'auth' ? b.cuerpo : p.cuerpo || '', ejB: arr(ej.b), ejH: arr(ej.h), pie: tipo === 'auth' ? '' : p.pie || '', oferta: p.oferta || '', vence: p.vence !== false, codigo: p.codigo || '' });
+  if (tipo === 'estandar') { b.encTipo = p.encTipo && p.encTipo !== 'Ninguno' ? p.encTipo : (p.encabezado ? 'Texto' : 'Ninguno'); b.encTexto = p.encabezado || ''; }
+  if (tipo === 'cupon') { b.encTexto = p.encabezado || ''; b.encTipo = b.encTexto ? 'Texto' : 'Ninguno'; }
+  if (tipo === 'oferta' || tipo === 'carrusel') b.medio = p.encTipo || 'Foto';
+  const deBoton = s => s.startsWith('↗ ') ? { tipo: 'Enlace', texto: s.slice(2), url: 'https://tienda.com/' + (p.urlVar ? '{{1}}' : ''), ej: ej.u || '' } : s.startsWith('✆ ') ? { tipo: 'Llamar', texto: s.slice(2), tel: '+52 81 5550 0101' } : { tipo: 'Respuesta rápida', texto: s };
+  if (tipo !== 'auth' && tipo !== 'carrusel') b.botones = (p.botones || []).filter(s => !s.startsWith('⧉') && s !== 'Darme de baja').map(deBoton);
+  if (tipo === 'carrusel') { const t0 = (p.tarjetas || [])[0] || { botones: [] }; b.tBotones = (t0.botones || []).slice(0, 2).map(s => s.startsWith('↗ ') ? 'Enlace' : 'Respuesta rápida'); b.tarjetas = (p.tarjetas || []).map((t, i) => ({ texto: t.texto || '', ej: arr((ej.c || [])[i]), b: b.tBotones.map((tp, k) => ({ texto: ((t.botones || [])[k] || '').replace(/^[↗✆] /, ''), url: tp === 'Enlace' ? 'https://tienda.com/' : '' })) })); }
+  if (tipo === 'auth') Object.assign(b, { otp: p.otp || 'Copiar código', min: p.min ? String(p.min) : '', paquete: p.paquete || '', firma: p.firma || '', seg: (p.cuerpo || '').includes('seguridad') });
+  return b;
 }
 // Envío de una plantilla desde el chat: se piden todos sus parámetros antes de poder enviarla.
 const varsDe = t => [...new Set([...(t || '').matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]))];
@@ -884,7 +1012,8 @@ function modalEnviarPl(id, prueba) {
   // En el chat sí se conoce al contacto: un atajo de un clic pone su nombre, y lo decide la persona.
   const nomC = c ? c.nombre.split(' ')[0] : '', atajo = n => nomC && !esAuth(p) && /^(h_|b_|c\d+_)/.test(n) ? `<a class="atajo-var" data-accion="usarNombreVar" data-campo="${n}" data-v="${esc(nomC)}">Usar el nombre del contacto (${esc(nomC)})</a>` : '';
   const inp = (et, nombre, tipo, valor = '', extra = '') => `<label class="campo"><span>${esc(et)} *</span><small class="tipo-p">${esc(tipo)}</small><input name="${nombre}" value="${esc(valor)}" required ${extra}></label>${atajo(nombre)}`;
-  const arch = (et, nombre, tipo) => `<label class="campo"><span>${esc(et)} *</span><small class="tipo-p">${esc(tipo)}</small><select name="${nombre}"><option>Usar el archivo guardado con la plantilla</option><option>Subir otro archivo (simulado)</option></select></label>`;
+  const acepta = { Foto: 'image/png,image/jpeg', Video: 'video/mp4', Documento: 'application/pdf' };
+  const arch = (et, nombre, tipo, medio) => `<label class="campo"><span>${esc(et)} *</span><small class="tipo-p">${esc(tipo)}; se sube al enviar</small><input type="file" name="${nombre}" accept="${acepta[medio] || ''}" required></label>`;
   const medioTipo = { Foto: 'Imagen JPG o PNG, hasta 5 MB', Video: 'Video MP4, hasta 16 MB', Documento: 'Documento PDF, hasta 100 MB; se envía con su nombre de archivo' };
   let f = '';
   if (prueba) {
@@ -892,14 +1021,15 @@ function modalEnviarPl(id, prueba) {
     f += `<label class="campo"><span>1. Número de salida *</span><small class="tipo-p">Números de la cuenta ${esc((DB.cuentas.find(w => w.id === p.cuenta) || {}).nombre || '')}, dueña de la plantilla</small><select name="salida">${nums.map(n => `<option value="${n.id}">${esc(n.nombre)} · ${esc(n.tel)}</option>`).join('')}</select></label>`;
     f += `<label class="campo"><span>2. Número de destino *</span><small class="tipo-p">Formato internacional: + código de país y número, por ejemplo +52 81 1234 5678</small><input name="destino" placeholder="+52 81 1234 5678" required></label><span class="et">3. Datos de la plantilla</span>`;
   }
-  if (!p.tarjetas && ['Foto', 'Video', 'Documento'].includes(p.encTipo)) f += arch(p.encTipo + ' del encabezado', 'hMedio', medioTipo[p.encTipo]);
+  if (!p.tarjetas && ['Foto', 'Video', 'Documento'].includes(p.encTipo)) f += arch(p.encTipo + ' del encabezado', 'hMedio', medioTipo[p.encTipo], p.encTipo);
   if (p.encTipo === 'Ubicación') f += inp('Latitud', 'lat', 'Número decimal, por ejemplo 25.6866', '', 'inputmode="decimal"') + inp('Longitud', 'lng', 'Número decimal, por ejemplo -100.3161', '', 'inputmode="decimal"') + inp('Nombre del lugar', 'lugar', 'Texto') + inp('Dirección', 'direccion', 'Texto');
   for (const k of varsDe(p.encabezado)) f += inp('Variable {{' + k + '}} del encabezado', 'h_' + k, 'Texto; el encabezado completo es de hasta 60 caracteres', '', ejDe(p, 'h', k));
   for (const k of varsDe(p.cuerpo)) f += esAuth(p) ? inp('Código de verificación', 'b_' + k, 'Texto de hasta 15 caracteres; va en el cuerpo y en el botón', '', 'maxlength="15"') : inp('Variable {{' + k + '}} del cuerpo', 'b_' + k, 'Texto', '', ejDe(p, 'b', k));
   if (p.oferta && p.vence) f += inp('La oferta vence el', 'vence', 'Fecha y hora; Meta la recibe en milisegundos', aLocal(new Date(Date.now() + 2 * DIA)), `type="datetime-local" min="${aLocal(new Date())}"`);
   if (p.codigo) f += inp('Código que se copia', 'codigo', 'Código de cupón de hasta ' + (p.oferta ? 15 : 20) + ' caracteres', '', `maxlength="${p.oferta ? 15 : 20}" placeholder="Ejemplo: ${esc(p.codigo)}"`);
-  if (p.urlVar) f += inp('Final del enlace del botón «' + btnUrl(p) + '»', 'u', 'Texto que se agrega al final del enlace; sin espacios', '', ejDe(p, 'u'));
-  (p.tarjetas || []).forEach((t, i) => { f += `<div class="f-grupo"><h4>Tarjeta ${i + 1}</h4>${arch(p.encTipo || 'Foto', 'c' + i + '_medio', medioTipo[p.encTipo || 'Foto'])}${varsDe(t.texto).map(k => inp('Variable {{' + k + '}} de la tarjeta ' + (i + 1), 'c' + i + '_' + k, 'Texto', '', ejDe(p, 'c', k, i))).join('')}</div>`; });
+  if (p.btnVars && p.btnVars.length) p.btnVars.forEach(x => { f += inp('Final del enlace del botón «' + x.texto + '» (índice ' + x.index + ')', 'u_' + x.index, 'Texto que se agrega al final del enlace; sin espacios', '', x.ej ? 'placeholder="Ejemplo: ' + esc(x.ej) + '"' : ''); });
+  else if (p.urlVar) f += inp('Final del enlace del botón «' + btnUrl(p) + '»', 'u', 'Texto que se agrega al final del enlace; sin espacios', '', ejDe(p, 'u'));
+  (p.tarjetas || []).forEach((t, i) => { f += `<div class="f-grupo"><h4>Tarjeta ${i + 1}</h4>${arch((p.encTipo || 'Foto') + ' de la tarjeta (índice ' + i + ')', 'c' + i + '_medio', medioTipo[p.encTipo || 'Foto'], p.encTipo || 'Foto')}${varsDe(t.texto).map(k => inp('Variable {{' + k + '}} de la tarjeta ' + (i + 1), 'c' + i + '_' + k, 'Texto', '', ejDe(p, 'c', k, i))).join('')}${(t.btnVars || []).map(x => inp('Final del enlace del botón «' + x.texto + '» (índice ' + x.index + ')', 'c' + i + '_u' + x.index, 'Texto que se agrega al final del enlace', '', x.ej ? 'placeholder="Ejemplo: ' + esc(x.ej) + '"' : '')).join('')}</div>`; });
   const titulo = (prueba ? 'Probar plantilla · ' : 'Enviar plantilla · ') + esc(p.nombre);
   const nota = prueba ? 'Llena los datos que esta plantilla necesita. Meta rechaza una plantilla a la que le falta un dato, así que el botón se activa cuando están todos.' : 'Llena los datos de esta plantilla. Meta rechaza una plantilla a la que le falta un dato, así que el botón de enviar se activa cuando están todos.';
   abrirModal(titulo, `<form id="formEnv" class="dos"><div><p class="nota">${nota}</p>${f || '<p>Esta plantilla no tiene datos por llenar.</p>'}</div><div><span class="et">${prueba ? 'Así llegará el mensaje' : 'Así lo recibirá ' + (c ? esc(c.nombre.split(' ')[0]) : 'el grupo')}</span><div class="previa" id="previaEnv"></div><p class="nota" id="faltanEnv"></p>${prueba ? '<details class="nota"><summary>Datos que se mandan a Meta</summary><pre class="json-pl" id="jsonEnv"></pre></details><p class="nota">Es una prueba: el prototipo no envía nada. Ya programado, este botón manda la plantilla al número de destino y se cobra como cualquier envío de su categoría.</p>' : ''}</div></form>`,
@@ -907,7 +1037,7 @@ function modalEnviarPl(id, prueba) {
   pintaEnv();
 }
 // Mensaje que se manda a Meta con los datos llenos.
-const idiomaMeta = t => ({ 'Español (MX)': 'es_MX', 'Español': 'es', 'Inglés (EE. UU.)': 'en_US', 'Inglés': 'en' }[t] || 'es_MX');
+const idiomaMeta = t => (IDIOMAS_PL.find(x => x[0] === t) || [0, 'es_MX'])[1];
 const paramTxt = (k, texto) => isNaN(k) ? { type: 'text', parameter_name: k, text: texto } : { type: 'text', text: texto };
 function cargaMeta(p, vals) {
   const comp = [], medio = { Foto: 'image', Video: 'video', Documento: 'document' }, liga = t => ({ link: 'https://archivos.ejemplo/plantillas/' + p.nombre + '.' + ({ image: 'jpg', video: 'mp4', document: 'pdf' }[t]) });
@@ -918,9 +1048,10 @@ function cargaMeta(p, vals) {
   if (p.oferta && p.vence) comp.push({ type: 'limited_time_offer', parameters: [{ type: 'limited_time_offer', limited_time_offer: { expiration_time_ms: vals.vence ? new Date(vals.vence).getTime() : 0 } }] });
   const bi = pre => (p.botones || []).findIndex(b => b.startsWith(pre));
   if (p.codigo && bi('⧉') >= 0) comp.push({ type: 'button', sub_type: 'copy_code', index: bi('⧉'), parameters: [{ type: 'coupon_code', coupon_code: vals.codigo || '' }] });
-  if (p.urlVar && bi('↗') >= 0) comp.push({ type: 'button', sub_type: 'url', index: bi('↗'), parameters: [{ type: 'text', text: vals.u || '' }] });
+  if (p.btnVars && p.btnVars.length) p.btnVars.forEach(x => comp.push({ type: 'button', sub_type: 'url', index: x.index, parameters: [{ type: 'text', text: vals['u_' + x.index] || '' }] }));
+  else if (p.urlVar && bi('↗') >= 0) comp.push({ type: 'button', sub_type: 'url', index: bi('↗'), parameters: [{ type: 'text', text: vals.u || '' }] });
   if (esAuth(p)) { const k = varsDe(p.cuerpo)[0]; comp.push({ type: 'button', sub_type: 'url', index: 0, parameters: [{ type: 'text', text: vals['b_' + k] || '' }] }); }
-  if (p.tarjetas) comp.push({ type: 'carousel', cards: p.tarjetas.map((t, i) => { const tm = medio[p.encTipo || 'Foto'], cc = [{ type: 'header', parameters: [{ type: tm, [tm]: liga(tm) }] }]; if (varsDe(t.texto).length) cc.push({ type: 'body', parameters: varsDe(t.texto).map(k => paramTxt(k, vals['c' + i + '_' + k] || '')) }); return { card_index: i, components: cc }; }) });
+  if (p.tarjetas) comp.push({ type: 'carousel', cards: p.tarjetas.map((t, i) => { const tm = medio[p.encTipo || 'Foto'], cc = [{ type: 'header', parameters: [{ type: tm, [tm]: liga(tm) }] }]; if (varsDe(t.texto).length) cc.push({ type: 'body', parameters: varsDe(t.texto).map(k => paramTxt(k, vals['c' + i + '_' + k] || '')) }); (t.btnVars || []).forEach(x => cc.push({ type: 'button', sub_type: 'url', index: x.index, parameters: [{ type: 'text', text: vals['c' + i + '_u' + x.index] || '' }] })); return { card_index: i, components: cc }; }) });
   return { messaging_product: 'whatsapp', recipient_type: 'individual', to: soloDig(vals.destino || ''), type: 'template', template: { name: p.nombre, language: { code: idiomaMeta(p.idioma) }, components: comp } };
 }
 const destinoValido = d => { const x = soloDig(d || ''); return /^\s*\+/.test(d || '') && x.length >= 8 && x.length <= 15; };
@@ -928,6 +1059,9 @@ function datosEnv() {
   const p0 = plEnvio, form = $('#formEnv'), vals = Object.fromEntries(new FormData(form));
   const faltan = [...form.querySelectorAll('[required]')].filter(i => !i.value.trim()).map(i => i.closest('label').querySelector('span').textContent.replace(' *', ''));
   const p = { ...p0, encabezado: llenar(p0.encabezado, 'h_', vals), cuerpo: llenar(p0.cuerpo, 'b_', vals), codigo: vals.codigo || p0.codigo, tarjetas: p0.tarjetas ? p0.tarjetas.map((t, i) => ({ ...t, texto: llenar(t.texto, 'c' + i + '_', vals) })) : undefined };
+  const fa = (n, medio) => { const i = form.elements[n], a = i && i.files && i.files[0]; return a ? { nombre: a.name, url: URL.createObjectURL(a), medio } : null; };
+  if (!p0.tarjetas && form.elements.hMedio) p.archivo = fa('hMedio', p0.encTipo);
+  if (p.tarjetas) p.tarjetas = p.tarjetas.map((t, i) => ({ ...t, archivo: fa('c' + i + '_medio', p0.encTipo || 'Foto') || t.archivo }));
   if (p0.encTipo === 'Ubicación' && vals.lugar) p.encabezado = vals.lugar + (vals.direccion ? ' · ' + vals.direccion : '');
   return { p, valores: vals, faltan, completo: !faltan.length, medio: ['Foto', 'Video', 'Documento', 'Ubicación'].includes(p0.encTipo) ? p0.encTipo : '', vence: vals.vence ? fechaTxt(new Date(vals.vence)) : '' };
 }
@@ -945,7 +1079,7 @@ function vPlantillas() {
   const q = (E.buscaPl || '').toLowerCase().trim();
   const lista = plantillasDe(E.numPl).filter(p => !q || (p.nombre + ' ' + p.cuerpo + ' ' + p.cat + ' ' + p.formato).toLowerCase().includes(q));
   const busca = `<input id="buscaPl" class="buscador" placeholder="Buscar plantilla por nombre o texto" value="${esc(E.buscaPl || '')}">`;
-  const tarjeta = p => `<div class="carta"><div class="c-top"><strong>${p.nombre}</strong>${estadoChip(p.estado)}</div><div class="d-fila">${chip(p.cat, 'azul')}${chip(p.formato, 'gris')}${chip(p.idioma || 'Español (MX)', 'gris')}</div><div class="previa">${previaPlantilla(p)}</div>${p.motivo ? `<small class="rojo">${esc(p.motivo)}</small>` : ''}<div class="metricas-pl"><div><small>Envíos</small><b>${(p.envios || 0).toLocaleString('es-MX')}</b></div><div><small>Clics</small><b>${(p.clics || 0).toLocaleString('es-MX')}</b></div><div title="Contactos que llegaron a una etapa Ganada dentro de los 15 días siguientes al envío"><small>Ventas</small><b>${(p.ventas || 0).toLocaleString('es-MX')}</b></div></div><small class="nota">Números: ${esc(numerosDeCuenta(p.cuenta).map(n => n.nombre).join(', ') || 'ninguno')}</small><div class="acciones-pl">${p.estado === 'Aprobada' ? btn('Probar plantilla', 'probarPl', '', `data-id="${p.id}"`) : ''}${['Aprobada', 'Rechazada', 'Pausada'].includes(p.estado) ? btn('Editar', 'editarPl', 'enlace', `data-id="${p.id}"`) : ''}${btn('Eliminar', 'borrarPl', 'enlace rojo', `data-id="${p.id}"`)}</div></div>`;
+  const tarjeta = p => `<div class="carta"><div class="c-top"><strong>${p.nombre}</strong>${estadoChip(p.estado)}</div><div class="d-fila">${chip(p.cat, 'azul')}${chip(p.formato, 'gris')}${chip(p.idioma || 'Español (MX)', 'gris')}${p.uso ? chip(p.uso, 'gris') : ''}</div><div class="previa">${previaPlantilla(p)}</div>${p.motivo ? `<small class="rojo">${esc(p.motivo)}</small>` : ''}<div class="metricas-pl"><div><small>Envíos</small><b>${(p.envios || 0).toLocaleString('es-MX')}</b></div><div><small>Clics</small><b>${(p.clics || 0).toLocaleString('es-MX')}</b></div><div title="Contactos que llegaron a una etapa Ganada dentro de los 15 días siguientes al envío"><small>Ventas</small><b>${(p.ventas || 0).toLocaleString('es-MX')}</b></div></div><small class="nota">Números: ${esc(numerosDeCuenta(p.cuenta).map(n => n.nombre).join(', ') || 'ninguno')}</small><div class="acciones-pl">${p.estado === 'Aprobada' ? btn('Probar plantilla', 'probarPl', '', `data-id="${p.id}"`) : ''}${['Aprobada', 'Rechazada', 'Pausada'].includes(p.estado) ? btn('Editar', 'editarPl', 'enlace', `data-id="${p.id}"`) : ''}${btn('Eliminar', 'borrarPl', 'enlace rojo', `data-id="${p.id}"`)}</div></div>`;
   return pagina('Plantillas de Meta', 'Solo las aprobadas se pueden usar en el chat y en campañas. Cada plantilla es de una cuenta de WhatsApp Business y la comparten todos los números de esa cuenta', sel + busca + btn('+ Crear plantilla', 'nuevaPlantilla', 'primario'),
     (E.numPl ? `<p class="nota">El número ${esc(N(E.numPl).nombre)} es de la cuenta ${esc(cuentaDe(E.numPl).nombre)}; estas son sus plantillas.</p>` : '') + `<p class="nota">${lista.length} ${lista.length === 1 ? 'plantilla' : 'plantillas'}. Ventas: contactos que llegaron a una etapa Ganada dentro de los 15 días siguientes a recibir la plantilla.</p>` +
     (lista.length ? `<div class="rejilla">${lista.map(tarjeta).join('')}</div>` : '<p class="nota">No hay plantillas que coincidan.</p>'));
@@ -956,21 +1090,9 @@ function editarPl(id) {
   const p = DB.plantillas.find(x => x.id === id), H = 3600000, ahoraMs = Date.now(), eds = (p.ediciones || []).filter(t => ahoraMs - t < 30 * 24 * H);
   if (p.estado === 'Aprobada' && eds.some(t => ahoraMs - t < 24 * H)) return aviso('Meta deja editar una plantilla aprobada una vez cada 24 horas');
   if (p.estado === 'Aprobada' && eds.length >= 10) return aviso('Meta deja editar una plantilla aprobada hasta 10 veces en 30 días');
-  E.editPl = id; subidasPl = {};
-  modalPlantilla(p.tipo || ({ 'Carrusel': 'carrusel', 'Oferta por tiempo limitado': 'oferta', 'Código de cupón': 'cupon', 'Autenticación': 'auth' }[p.formato] || 'estandar'), p.nombre);
-  const f = $('#formPl'), pon = (n, v) => { if (f.elements[n] && v != null && v !== '') f.elements[n].value = v; };
-  $('#modal h2') && ($('#modal h2').textContent = 'Editar plantilla · ' + p.nombre);
-  pon('cuerpo', p.cuerpo); pon('pie', p.pie); pon('encTexto', p.encabezado); pon('oferta', p.oferta); pon('codigo', p.codigo);
-  if (p.encTipo && f.elements.encTipo) pon('encTipo', p.encTipo); if (p.encTipo && f.elements.medio) pon('medio', p.encTipo);
-  pon('rapidas', (p.botones || []).filter(b => !/^[↗✆⧉]/.test(b) && b !== 'Darme de baja').join('\n'));
-  (p.botones || []).filter(b => b.startsWith('↗ ')).slice(0, 2).forEach((b, i) => pon('urlTxt' + i, b.slice(2)));
-  if (p.tarjetas && f.elements.nTarjetas) { pon('nTarjetas', String(p.tarjetas.length)); p.tarjetas.forEach((t, i) => { pon('tTexto' + i, t.texto); (t.botones || []).forEach((b, j) => pon('tB' + (j + 1) + '_' + i, b.replace(/^[↗✆] /, ''))); }); }
-  // Nombre, idioma, categoría y número no cambian al editar
-  f.elements.nombre.readOnly = true; ['cat', 'idioma', 'numeroPl'].forEach(n => { const s = f.elements[n]; if (!s) return; const v = n === 'cat' ? p.cat : n === 'idioma' ? (p.idioma || 'Español (MX)') : (numerosDeCuenta(p.cuenta)[0] || {}).id; if (v) { s.innerHTML = `<option ${n === 'numeroPl' ? `value="${v}"` : ''}>${esc(n === 'numeroPl' ? N(v).nombre + ' · ' + cuentaDe(v).nombre : v)}</option>`; } });
-  const nota = document.createElement('p'); nota.className = 'nota'; nota.textContent = 'Al editar no cambian el nombre, el idioma, la categoría ni la cuenta. La plantilla vuelve a revisión de Meta; mientras tanto se puede seguir usando la versión aprobada.' + (p.estado === 'Aprobada' ? ` Ediciones en los últimos 30 días: ${eds.length} de 10.` : '');
-  f.querySelector('#notaCat').after(nota);
-  const bt = $('#modal [data-accion="guardarPl"]'); if (bt) bt.textContent = 'Guardar y enviar a revisión';
-  actualizaPl();
+  E.editPl = id; subidasPl = {}; borPl = borDesdePlantilla(p); borPl.numeroPl = (numerosDeCuenta(p.cuenta)[0] || {}).id;
+  modalPlantilla(borPl.tipo, null, true);
+  if (p.estado === 'Aprobada') { const n = document.createElement('p'); n.className = 'nota'; n.textContent = 'Ediciones en los últimos 30 días: ' + eds.length + ' de 10 (una cada 24 horas).'; const r = $('.datos-fijos'); if (r) r.appendChild(n); }
 }
 function borrarPl(id) {
   const p = DB.plantillas.find(x => x.id === id), usada = DB.campanas.find(k => k.plantilla === p.nombre && k.estado === 'Programada');
@@ -1182,7 +1304,7 @@ const A = {
   adjDoc: () => { cerrarModal(); enviarMsg({ tipo: 'doc', t: 'Lista-de-precios.pdf' }); },
   rapidas: () => abrirModal('Respuestas rápidas · ' + (CONV() ? N(CONV().numero).nombre : 'todos los números'), `<div class="opciones">${rapidasDe(CONV() && CONV().numero).map(r => `<a data-accion="usarRapida" data-id="${r.id}"><strong>${esc(r.titulo)}</strong><small>${esc(r.texto)}</small></a>`).join('')}</div>`),
   usarRapida: d => { const r = DB.respuestas.find(x => x.id === d.id); cerrarModal(); const t = $('#texto'); if (t) { t.value = r.texto; t.focus(); } },
-  plantilla: () => limiteAlcanzado() ? aviso(`Se alcanzó el límite de ${DB.empresa.limCant} plantillas ${{ Diario: 'por día', Semanal: 'por semana', Mensual: 'por mes' }[DB.empresa.limPeriodo]} desde la bandeja. Lo cambia el administrador en Empresa.`) : abrirModal('Enviar plantilla', `<p class="nota">Solo aparecen las plantillas aprobadas por Meta de la cuenta del número ${esc(N(CONV().numero).nombre)}. Con la ventana cerrada es la única forma de escribirle al cliente.</p><div class="opciones">${plantillasDe(CONV().numero).filter(p => p.estado === 'Aprobada').map(p => `<a data-accion="usarPlantilla" data-id="${p.id}"><strong>${p.nombre}</strong> ${chip(p.cat, 'azul')}<small>${esc(p.cuerpo)}</small></a>`).join('')}</div>`),
+  plantilla: () => limiteAlcanzado() ? aviso(`Se alcanzó el límite de ${DB.empresa.limCant} plantillas ${{ Diario: 'por día', Semanal: 'por semana', Mensual: 'por mes' }[DB.empresa.limPeriodo]} desde la bandeja. Lo cambia el administrador en Empresa.`) : abrirModal('Enviar plantilla', `<p class="nota">Solo aparecen las plantillas aprobadas por Meta de la cuenta del número ${esc(N(CONV().numero).nombre)}. Con la ventana cerrada es la única forma de escribirle al cliente.</p><div class="opciones">${plantillasDe(CONV().numero).filter(p => p.estado === 'Aprobada' && p.uso !== 'Campaña').map(p => `<a data-accion="usarPlantilla" data-id="${p.id}"><strong>${p.nombre}</strong> ${chip(p.cat, 'azul')}<small>${esc(p.cuerpo)}</small></a>`).join('')}</div>`),
   usarPlantilla: d => modalEnviarPl(d.id),
   probarPl: d => modalEnviarPl(d.id, true),
   usarNombreVar: d => { const i = $('#formEnv [name=' + d.campo + ']'); if (!i) return; i.value = d.v; i.dispatchEvent(new Event('input', { bubbles: true })); },
@@ -1254,7 +1376,18 @@ const A = {
   conectarPaso: d => conectar(d.p),
   conectarFin: d => { if (d.p === 'QR' && !$('#aceptoQR').checked) return aviso('Debes aceptar el riesgo para continuar'); if (DB.numeros.length >= 3) { cerrarModal(); return aviso('Llegaste al máximo de números de tu plan'); } DB.numeros.push({ id: 'n' + Date.now(), nombre: d.p === 'QR' ? 'Número QR' : ($('#nomNum').value || 'Nuevo'), tel: '+52 81 5550 01' + (10 + DB.numeros.length), tipo: d.p, estado: 'Conectado', calidad: d.p === 'QR' ? '—' : 'Alta', limite: d.p === 'QR' ? 'No aplica' : '250 por día', oficial: false }); cerrarModal(); render(); aviso('Número conectado'); },
   nuevaPlantilla: () => { E.editPl = null; subidasPl = {}; modalPlantilla(); },
-  tipoPl: d => { if (E.editPl) return aviso('Al editar no se puede cambiar el tipo de plantilla'); modalPlantilla(d.t, $('#formPl [name=nombre]').value); },
+  agregarVarPl: d => { const c = $('#formPl [name="' + d.campo + '"]'); if (!c) return; const n = varsDe(c.value).length + 1, ini = c.selectionStart ?? c.value.length, fin = c.selectionEnd ?? c.value.length, tok = (ini > 0 && !/\s/.test(c.value[ini - 1]) ? ' ' : '') + '{{' + n + '}}'; c.value = c.value.slice(0, ini) + tok + c.value.slice(fin); c.focus(); c.setSelectionRange(ini + tok.length, ini + tok.length); c.dispatchEvent(new Event('input', { bubbles: true })); },
+  agregarBotonPl: d => { leerPl(); borPl.botones.push({ tipo: d.t, texto: '', url: '', tel: '', ej: '' }); repintaPl(); },
+  quitarBotonPl: d => { leerPl(); borPl.botones.splice(+d.i, 1); repintaPl(); },
+  agregarTarjetaPl: () => { leerPl(); if (borPl.tarjetas.length >= 10) return aviso('El carrusel lleva hasta 10 tarjetas'); borPl.tarjetas.push({ texto: '', ej: [], b: borPl.tBotones.map(() => ({})) }); repintaPl(); },
+  agregarBotonTarjetaPl: d => { leerPl(); if (borPl.tBotones.length >= 2) return aviso('Cada tarjeta lleva hasta 2 botones'); borPl.tBotones.push(d.t); borPl.tarjetas.forEach(t => t.b.push({})); repintaPl(); },
+  quitarBotonTarjetaPl: d => { leerPl(); const k = +d.k; borPl.tBotones.splice(k, 1); borPl.tarjetas.forEach(t => t.b.splice(k, 1)); repintaPl(); },
+  moverTarjetaPl: d => { leerPl(); const i = +d.i, j = i + +d.d, T = borPl.tarjetas; if (j < 0 || j >= T.length) return; [T[i], T[j]] = [T[j], T[i]]; const a = subidasPl['tM' + i], z = subidasPl['tM' + j]; if (z) subidasPl['tM' + i] = z; else delete subidasPl['tM' + i]; if (a) subidasPl['tM' + j] = a; else delete subidasPl['tM' + j]; repintaPl(); },
+  encabezadoPl: d => { leerPl(); if (d.v === 'Texto') borPl.encTipo = borPl.encTexto.trim() ? 'Texto' : 'Ninguno'; else borPl.encTipo = d.v; delete subidasPl.muestraH; repintaPl(); },
+  medioPl: d => { leerPl(); if (borPl.medio !== d.v) { borPl.medio = d.v; Object.keys(subidasPl).forEach(k => { if (/^tM\d+$|^muestraH$/.test(k)) delete subidasPl[k]; }); } repintaPl(); },
+  usoPl: d => { leerPl(); borPl.uso = d.v; repintaPl(); },
+  quitarTarjetaPl: d => { leerPl(); if (borPl.tarjetas.length <= 2) return aviso('El carrusel lleva al menos 2 tarjetas'); const i = +d.i; borPl.tarjetas.splice(i, 1); const nuevas = {}; Object.keys(subidasPl).forEach(k => { const m = /^tM(\d+)$/.exec(k); if (!m) nuevas[k] = subidasPl[k]; else if (+m[1] < i) nuevas[k] = subidasPl[k]; else if (+m[1] > i) nuevas['tM' + (+m[1] - 1)] = subidasPl[k]; }); subidasPl = nuevas; repintaPl(); },
+  tipoPl: d => { if (E.editPl) return aviso('Al editar no se puede cambiar el formato'); leerPl(); const ant = borPl; subidasPl = {}; borPl = borNuevo(d.t, ant.nombre); Object.assign(borPl, { cat: ant.cat, idioma: ant.idioma, numeroPl: ant.numeroPl, uso: d.t === 'carrusel' ? 'Campaña' : ant.uso }); modalPlantilla(d.t, null, true); },
   guardarPl,
   nuevaRespuesta: () => formRespuesta(null),
   editarRespuesta: d => formRespuesta(DB.respuestas.find(x => x.id === d.id)),
