@@ -333,3 +333,43 @@ details.nota { margin-bottom: 12px; } details.nota summary { cursor: pointer; } 
 .solo-lectura { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; background: #f1f5f9; border: 1px dashed var(--linea); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
 .solo-lectura strong { display: block; color: var(--suave); }
 .paleta input[type=checkbox] { position: absolute; opacity: 0; width: 0; height: 0; } .paleta label:has(input[type=checkbox]) { padding: 5px 10px; }
+.sel-embudo { width: auto; max-width: 60%; }
+.carta .c-top h3 { margin: 0; }
+tr.fila-inactiva td { color: var(--tenue); } tr.fila-inactiva .avatar { filter: grayscale(1); opacity: .6; }
+.verde-t { color: var(--marca-o); } td code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+.emb-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; } .emb-cab > span { display: inline-flex; align-items: center; gap: 6px; }
+.mini.inactiva { opacity: .55; text-decoration: line-through; }
+.acc-etapa { display: inline-flex; align-items: center; gap: 8px; }
+.d-fila.fila-inactiva .mini { opacity: .55; }
+
+/* Horario de atención por bloques */
+.bloques-horario { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.bloque-h { display: grid; grid-template-columns: 170px 1fr 1fr 70px; gap: 10px; align-items: end; padding: 8px 10px; border: 1px solid var(--linea); border-radius: 8px; }
+.bloque-h .campo { margin: 0; } .bloque-h .check { padding-bottom: 8px; }
+.bloque-h.cerrado .campo { opacity: .4; }
+body.movil .bloque-h { grid-template-columns: 1fr 1fr; } body.movil .bloque-h .check { grid-column: 1 / -1; }
+/* Estado en formularios: casilla con el diseño del interruptor */
+.estado-sw { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; padding: 6px 0; }
+.estado-sw b { font-weight: 600; }
+.info-emb { border: 1px solid var(--linea); border-radius: 8px; padding: 8px 10px; margin: -4px 0 12px; display: flex; flex-direction: column; gap: 4px; }
+.en-fila { display: flex; gap: 8px; align-items: center; } .en-fila select { flex: 1; min-width: 0; }
+.aviso-borrador { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 8px 12px; margin: 0 0 12px; }
+.aviso-borrador { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.tipo-p { display: block; color: var(--texto-2, #64748b); font-size: 11.5px; margin: -2px 0 4px; }
+.json-pl { max-height: 240px; overflow: auto; background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 11.5px; white-space: pre; }
+.no-ofrece { border: 1px dashed var(--linea); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; color: #64748b; margin: 0 0 10px; display: flex; flex-direction: column; gap: 2px; }
+.no-ofrece b { color: inherit; }
+/* Listas de plantillas y respuestas rápidas */
+.metricas-pl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 4px; text-align: center; }
+.metricas-pl div { background: #f8fafc; border: 1px solid var(--linea); border-radius: 8px; padding: 4px; }
+.metricas-pl small { display: block; color: #64748b; font-size: 11px; } .metricas-pl b { font-size: 15px; }
+.acciones-pl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.recorte { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.paginado { display: flex; gap: 12px; align-items: center; justify-content: center; margin: 14px 0; }
+.rojo-btn { background: #dc2626 !important; border-color: #dc2626 !important; color: #fff !important; }
+/* Empresa */
+.logo.con-img { background: #fff; overflow: hidden; padding: 0; } .logo.con-img img { width: 100%; height: 100%; object-fit: cover; }
+.img-emp { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.img-prev { width: 64px; height: 64px; border: 1px dashed var(--linea); border-radius: 12px; display: grid; place-items: center; overflow: hidden; background: #f8fafc; color: #64748b; }
+.img-prev.ancho { width: 160px; height: 48px; } .img-prev img { width: 100%; height: 100%; object-fit: contain; }
+.aviso-ia { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin: 0 0 10px; }

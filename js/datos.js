@@ -1,17 +1,21 @@
 // Datos fijos del prototipo. Todo es inventado: no hay clientes ni telefonos reales.
 const DB = {
-  empresa: { nombre: 'Aromas del Norte', plan: 'Prueba gratis', diasPrueba: 5, usuariosMax: 5, numerosMax: 2 },
+  empresa: { nombre: 'Aromas del Norte', razon: 'Aromas del Norte S.A. de C.V.', tel: '+52 81 5550 0100', correo: 'hola@aromasdelnorte.test', domicilio: 'Av. Constitución 120, Centro, Monterrey, N.L., 64000', web: 'https://instagram.com/aromasdelnorte', zona: 'America/Monterrey', logo: '', icono: '', giro: '', vende: '', noVende: '', fRazon: 'AROMAS DEL NORTE', rfc: 'ADN150312AB1', fCp: '64000', regimen: '601', usoCfdi: 'G03', fCorreo: 'facturas@aromasdelnorte.test', plan: 'Prueba gratis', diasPrueba: 5, usuariosMax: 5, numerosMax: 2 },
 
   usuarios: [
     { id: 'u1', nombre: 'Adely Torres', ini: 'AT', rol: 'Administrador', sucursal: 'Matriz', disp: true, correo: 'adely@aromasdelnorte.test', numeros: ['n1', 'n2'] },
     { id: 'u2', nombre: 'Elena Garza', ini: 'EG', rol: 'Supervisor', sucursal: 'Matriz', disp: true, correo: 'elena@aromasdelnorte.test', numeros: ['n1', 'n2'] },
     { id: 'u3', nombre: 'Marco Ruiz', ini: 'MR', rol: 'Agente', sucursal: 'Saltillo', disp: true, correo: 'marco@aromasdelnorte.test', numeros: ['n1'] },
-    { id: 'u4', nombre: 'Sofía Luna', ini: 'SL', rol: 'Agente', sucursal: 'Saltillo', disp: false, correo: 'sofia@aromasdelnorte.test', numeros: ['n2'] }
+    { id: 'u4', nombre: 'Sofía Luna', ini: 'SL', rol: 'Agente', sucursal: 'Saltillo', disp: false, correo: 'sofia@aromasdelnorte.test', numeros: ['n2'] },
+    { id: 'u5', nombre: 'Iván Robles', ini: 'IR', rol: 'Agente', sucursal: 'Matriz', disp: false, correo: 'ivan@aromasdelnorte.test', numeros: ['n1'], inactivo: true, inactivoDesde: '30 sep 2026' }
   ],
 
+  // Cuentas de WhatsApp Business de la empresa. Las plantillas pertenecen a la cuenta y las comparten sus números.
+  cuentas: [{ id: 'w1', nombre: 'Aromas del Norte · Ventas' }, { id: 'w2', nombre: 'Aromas del Norte · Atención' }],
+
   numeros: [
-    { id: 'n1', nombre: 'Pedidos', tel: '+52 81 5550 0101', tipo: 'Cloud API', estado: 'Conectado', calidad: 'Alta', limite: '2,000 por día', oficial: true, cierre: 24, dias: [1, 2, 3, 4, 5, 6], abre: '09:00', cierra: '18:00' },
-    { id: 'n2', nombre: 'Atención a clientes', tel: '+52 81 5550 0102', tipo: 'Coexistencia', estado: 'Conectado', calidad: 'Media', limite: '2,000 por día', oficial: false, cierre: 48, dias: [1, 2, 3, 4, 5], abre: '09:00', cierra: '17:00' }
+    { id: 'n1', cuenta: 'w1', nombre: 'Pedidos', tel: '+52 81 5550 0101', tipo: 'Cloud API', estado: 'Conectado', calidad: 'Alta', limite: '2,000 por día', oficial: true, cierre: 24, siempre: false, horario: { lv: { abierto: true, abre: '09:00', cierra: '18:00' }, sab: { abierto: true, abre: '10:00', cierra: '14:00' }, dom: { abierto: false, abre: '10:00', cierra: '14:00' } } },
+    { id: 'n2', cuenta: 'w2', nombre: 'Atención a clientes', tel: '+52 81 5550 0102', tipo: 'Coexistencia', estado: 'Conectado', calidad: 'Media', limite: '2,000 por día', oficial: false, cierre: 48, siempre: false, horario: { lv: { abierto: true, abre: '09:00', cierra: '17:00' }, sab: { abierto: false, abre: '10:00', cierra: '14:00' }, dom: { abierto: false, abre: '10:00', cierra: '14:00' } } }
   ],
 
   gruposTags: [
@@ -23,7 +27,7 @@ const DB = {
 
   // Cada embudo tiene sus propias etapas. Tipos: general (contactos), tickets (tickets) y campana (contactos de una campaña).
   embudos: [
-    { id: 'b1', n: 'Ventas', tipo: 'general', claves: ['precio', 'comprar', 'cotización'], desc: 'Seguimiento de ventas. Un contacto entra cuando alguien lo agrega o cuando escribe una de las palabras clave.', etapas: [
+    { id: 'b1', n: 'Ventas', tipo: 'general', filtro: 'claves', aplicar: 'siempre', claves: ['precio', 'comprar', 'cotización'], desc: 'Seguimiento de ventas. Un contacto entra cuando alguien lo agrega o cuando escribe una de las palabras clave.', etapas: [
       { id: 'e1', n: 'Nuevo', tipo: 'abierta', c: '#2563eb' },
       { id: 'e2', n: 'En conversación', tipo: 'abierta', c: '#f59e0b' },
       { id: 'e3', n: 'Interesado', tipo: 'abierta', c: '#7c3aed' },
@@ -120,19 +124,24 @@ const DB = {
   tiposContacto: ['Usuario nuevo', 'Cliente', 'Usuario público', 'Cliente especial'],
   motivos: ['Problema con envío', 'No se refleja el pago', 'Garantía', 'Aclaración', 'Otro'],
   tickets: [
-    { id: 101, conv: 'v3', contacto: 'c3', motivo: 'Problema con envío', estado: 'En proceso', etapa: 'q2', dias: 1, por: 'u2', asignado: 'u4', creado: 'ayer 09:25', desc: 'Pedido con 6 días de retraso. Revisar guía con paquetería.', comentarios: [{ por: 'u4', t: 'Paquetería confirma entrega para mañana.', f: 'ayer 12:10' }] },
+    { id: 95, conv: 'v1', contacto: 'c1', motivo: 'No se refleja el pago', estado: 'Cerrado', etapa: 'q4', dias: 6, primera: 8, cierreH: 3, por: 'u2', asignado: 'u3', creado: '29 sep 11:00', desc: 'Pago por transferencia no aplicado.', comentarios: [] },
+    { id: 93, conv: 'v4', contacto: 'c4', motivo: 'Problema con envío', estado: 'Cerrado', etapa: 'q4', dias: 9, primera: 20, cierreH: 30, por: 'u2', asignado: 'u2', creado: '26 sep 10:30', desc: 'Faltó una caja en el pedido.', comentarios: [] },
+    { id: 90, conv: 'v6', contacto: 'c5', motivo: 'Aclaración', estado: 'Cerrado', etapa: 'q5', dias: 12, primera: 45, cierreH: 52, por: 'u1', asignado: 'u4', creado: '23 sep 17:40', desc: 'Pidió aclaración de precios; no respondió.', comentarios: [] },
+    { id: 88, conv: 'v2', contacto: 'c2', motivo: 'Garantía', estado: 'Cerrado', etapa: 'q4', dias: 25, primera: 12, cierreH: 8, por: 'u2', asignado: 'u3', creado: '10 sep 09:15', desc: 'Difusor defectuoso, se cambió.', comentarios: [] },
+    { id: 101, conv: 'v3', contacto: 'c3', motivo: 'Problema con envío', estado: 'En proceso', etapa: 'q2', dias: 1, primera: 15, por: 'u2', asignado: 'u4', creado: 'ayer 09:25', desc: 'Pedido con 6 días de retraso. Revisar guía con paquetería.', comentarios: [{ por: 'u4', t: 'Paquetería confirma entrega para mañana.', f: 'ayer 12:10' }] },
     { id: 102, conv: 'v5', contacto: 'c6', motivo: 'No se refleja el pago', estado: 'Abierto', etapa: 'q1', dias: 2, por: 'u2', asignado: 'u3', creado: '3 oct 18:00', desc: 'Envió comprobante. Validar con cobranza.', comentarios: [] },
-    { id: 98, conv: 'v7', contacto: 'c7', motivo: 'Garantía', estado: 'Cerrado', etapa: 'q4', dias: 5, por: 'u1', asignado: 'u3', creado: '30 sep 16:15', desc: 'Solicita garantía de difusor.', comentarios: [{ por: 'u3', t: 'Se envió formato; cliente no respondió.', f: '1 oct 16:00' }] }
+    { id: 98, conv: 'v7', contacto: 'c7', motivo: 'Garantía', estado: 'Cerrado', etapa: 'q4', dias: 5, primera: 10, cierreH: 24, por: 'u1', asignado: 'u3', creado: '30 sep 16:15', desc: 'Solicita garantía de difusor.', comentarios: [{ por: 'u3', t: 'Se envió formato; cliente no respondió.', f: '1 oct 16:00' }] }
   ],
 
   plantillas: [
-    { id: 'p1', nombre: 'catalogo_otono', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Mensaje estándar', estado: 'Aprobada', cuerpo: 'Hola {{1}}, ya llegó el catálogo de otoño con 20% en tu primer pedido. ¿Te lo envío?', vars: { 1: 'Nombre del cliente' }, botones: ['Sí, envíalo', 'Darme de baja'], envios: 1240, clics: 312 },
-    { id: 'p2', nombre: 'confirmacion_pedido', cat: 'Utilidad', idioma: 'Español (MX)', formato: 'Mensaje estándar', estado: 'Aprobada', cuerpo: 'Hola {{1}}, tu pedido {{2}} fue confirmado y sale mañana.', vars: { 1: 'Nombre del cliente', 2: 'Número de pedido' }, urlVar: 'Código de rastreo (final del enlace)', botones: ['↗ Rastrear pedido'], envios: 2185, clics: 640 },
-    { id: 'p5', nombre: 'promo_con_foto', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Mensaje estándar', estado: 'Aprobada', encTipo: 'Foto', cuerpo: 'Hola {{1}}, esta semana tienes {{2}} en {{3}}.', vars: { 1: 'Nombre del cliente', 2: 'Descuento', 3: 'Línea de producto' }, pie: 'Promoción válida hasta agotar existencias', botones: ['Me interesa', 'Darme de baja'], envios: 86, clics: 0 },
-    { id: 'p6', nombre: 'novedades_carrusel', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Carrusel', estado: 'Aprobada', encTipo: 'Foto', cuerpo: 'Hola {{1}}, mira lo nuevo de {{2}}. Responde BAJA para no recibir más mensajes.', vars: { 1: 'Nombre del cliente', 2: 'Mes' }, tarjetas: [{ texto: 'Velas desde {{1}}', vars: { 1: 'Precio de las velas' }, botones: ['Ver producto'] }, { texto: 'Difusores desde {{1}}', vars: { 1: 'Precio de los difusores' }, botones: ['Ver producto'] }], botones: [], envios: 40, clics: 12 },
-    { id: 'p7', nombre: 'oferta_relampago', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Oferta por tiempo limitado', estado: 'Aprobada', encTipo: 'Foto', oferta: '20% de descuento', vence: true, codigo: 'OTONO20', cuerpo: 'Hola {{1}}, solo por tiempo limitado. Responde BAJA para no recibir más mensajes.', vars: { 1: 'Nombre del cliente' }, urlVar: 'Final del enlace de la tienda', botones: ['⧉ Copiar código', '↗ Comprar'], envios: 15, clics: 4 },
-    { id: 'p3', nombre: 'reactivacion_3_meses', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Carrusel', encTipo: 'Foto', tarjetas: [{ texto: 'Velas de temporada', botones: ['Ver producto'] }, { texto: 'Difusores nuevos', botones: ['Ver producto'] }, { texto: 'Kits de regalo', botones: ['Ver producto'] }], estado: 'En revisión', cuerpo: 'Hola {{1}}, te extrañamos. Mira lo nuevo de este mes. Responde BAJA para no recibir más mensajes.', botones: [], envios: 0, clics: 0 },
-    { id: 'p4', nombre: 'promo_relampago', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Mensaje estándar', estado: 'Rechazada', cuerpo: '¡¡SOLO HOY!! Compra ya.', botones: ['Darme de baja'], envios: 0, clics: 0, motivo: 'Meta: el texto no cumple la política de contenido promocional.' }
+    { id: 'p1', cuenta: 'w1', nombre: 'catalogo_otono', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Mensaje estándar', estado: 'Aprobada', cuerpo: 'Hola {{1}}, ya llegó el catálogo de otoño con 20% en tu primer pedido. ¿Te lo envío?', vars: { 1: 'Nombre del cliente' }, botones: ['Sí, envíalo', 'Darme de baja'], envios: 1240, clics: 312, ventas: 41 },
+    { id: 'p2', cuenta: 'w1', nombre: 'confirmacion_pedido', cat: 'Utilidad', idioma: 'Español (MX)', formato: 'Mensaje estándar', estado: 'Aprobada', cuerpo: 'Hola {{1}}, tu pedido {{2}} fue confirmado y sale mañana.', vars: { 1: 'Nombre del cliente', 2: 'Número de pedido' }, urlVar: 'Código de rastreo (final del enlace)', botones: ['↗ Rastrear pedido'], envios: 2185, clics: 640, ventas: 0 },
+    { id: 'p5', cuenta: 'w1', nombre: 'promo_con_foto', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Mensaje estándar', estado: 'Aprobada', encTipo: 'Foto', cuerpo: 'Hola {{1}}, esta semana tienes {{2}} en {{3}}.', vars: { 1: 'Nombre del cliente', 2: 'Descuento', 3: 'Línea de producto' }, pie: 'Promoción válida hasta agotar existencias', botones: ['Me interesa', 'Darme de baja'], envios: 86, clics: 0, ventas: 6 },
+    { id: 'p6', cuenta: 'w1', nombre: 'novedades_carrusel', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Carrusel', estado: 'Aprobada', encTipo: 'Foto', cuerpo: 'Hola {{1}}, mira lo nuevo de {{2}}. Responde BAJA para no recibir más mensajes.', vars: { 1: 'Nombre del cliente', 2: 'Mes' }, tarjetas: [{ texto: 'Velas desde {{1}}', vars: { 1: 'Precio de las velas' }, botones: ['Ver producto'] }, { texto: 'Difusores desde {{1}}', vars: { 1: 'Precio de los difusores' }, botones: ['Ver producto'] }], botones: [], envios: 40, clics: 12, ventas: 3 },
+    { id: 'p7', cuenta: 'w2', nombre: 'oferta_relampago', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Oferta por tiempo limitado', estado: 'Aprobada', encTipo: 'Foto', oferta: '20% de descuento', vence: true, codigo: 'OTONO20', cuerpo: 'Hola {{1}}, solo por tiempo limitado. Responde BAJA para no recibir más mensajes.', vars: { 1: 'Nombre del cliente' }, urlVar: 'Final del enlace de la tienda', botones: ['⧉ Copiar código', '↗ Comprar'], envios: 15, clics: 4, ventas: 2 },
+    { id: 'p8', cuenta: 'w1', nombre: 'codigo_acceso', cat: 'Autenticación', idioma: 'Español (MX)', formato: 'Autenticación', tipo: 'auth', otp: 'Copiar código', min: 10, estado: 'Aprobada', cuerpo: '{{1}} es tu código de verificación. Por tu seguridad, no lo compartas.', pie: 'Este código vence en 10 minutos.', botones: ['⧉ Copiar código'], envios: 320, clics: 0, ventas: 0 },
+    { id: 'p3', cuenta: 'w1', nombre: 'reactivacion_3_meses', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Carrusel', encTipo: 'Foto', tarjetas: [{ texto: 'Velas de temporada', botones: ['Ver producto'] }, { texto: 'Difusores nuevos', botones: ['Ver producto'] }, { texto: 'Kits de regalo', botones: ['Ver producto'] }], estado: 'En revisión', cuerpo: 'Hola {{1}}, te extrañamos. Mira lo nuevo de este mes. Responde BAJA para no recibir más mensajes.', botones: [], envios: 0, clics: 0 },
+    { id: 'p4', cuenta: 'w2', nombre: 'promo_relampago', cat: 'Marketing', idioma: 'Español (MX)', formato: 'Mensaje estándar', estado: 'Rechazada', cuerpo: '¡¡SOLO HOY!! Compra ya.', botones: ['Darme de baja'], envios: 0, clics: 0, motivo: 'Meta: el texto no cumple la política de contenido promocional.' }
   ],
 
   campanas: [
@@ -155,18 +164,29 @@ const DB = {
       { nombre: 'Iván', apellido: 'Cantú', tel: '+52 84 5550 3022', tipo: 'Importado' }] }
   ],
 
+  // numero: null = todos los números.
   respuestas: [
     { id: 'r1', titulo: 'Saludo', texto: '¡Hola! Gracias por escribir a Aromas del Norte. ¿En qué te puedo ayudar?', archivo: '' },
     { id: 'r2', titulo: 'Catálogo', texto: 'Te comparto nuestro catálogo vigente 👇', archivo: 'Catalogo-otono-2026.pdf' },
-    { id: 'r3', titulo: 'Datos de pago', texto: 'Puedes pagar por transferencia. En cuanto envíes tu comprobante confirmamos tu pedido.', archivo: '' },
+    { id: 'r3', numero: 'n1', titulo: 'Datos de pago', texto: 'Puedes pagar por transferencia. En cuanto envíes tu comprobante confirmamos tu pedido.', archivo: '' },
+    { id: 'r5', titulo: 'Horario', texto: 'Nuestro horario es de lunes a viernes de 9:00 a 18:00 y sábados de 10:00 a 14:00.', archivo: '' },
+    { id: 'r6', titulo: 'Envíos', texto: 'Hacemos envíos a todo México. El costo depende del código postal; compárteme el tuyo y te lo cotizo.', archivo: '' },
+    { id: 'r7', titulo: 'Tiempo de entrega', texto: 'Tu pedido llega de 3 a 5 días hábiles después de confirmar el pago.', archivo: '' },
+    { id: 'r8', titulo: 'Rastreo', texto: 'Con tu número de guía puedes rastrear tu pedido en la página de la paquetería.', archivo: '' },
+    { id: 'r9', titulo: 'Cambios y devoluciones', texto: 'Tienes 15 días para cambios. El producto debe estar sin usar y con su empaque original.', archivo: '' },
+    { id: 'r10', titulo: 'Facturación', texto: 'Para tu factura envíame tu RFC, razón social, régimen fiscal, código postal y uso del CFDI.', archivo: '' },
+    { id: 'r11', titulo: 'Mayoreo', texto: 'Para precios de mayoreo el pedido mínimo es de 12 piezas. ¿Qué productos te interesan?', archivo: '' },
+    { id: 'r12', titulo: 'Pago en tienda', texto: 'También puedes pagar en efectivo en tiendas de conveniencia con la referencia que te envío.', archivo: '' },
+    { id: 'r13', titulo: 'Seguimiento', texto: 'Hola, ¿pudiste revisar la información que te envié? Quedo pendiente por si tienes dudas.', archivo: '' },
     { id: 'r4', titulo: 'Despedida', texto: 'Fue un gusto atenderte. ¡Excelente día!', archivo: '' }
   ],
 
   // cuando: 'Por defecto' | 'Fuera de horario' | 'Palabras clave'. numero: null = todos los números.
   automaticos: [
+    { id: 'a4', nombre: 'Número de pedido', numero: 'n1', cuando: 'Expresión regular', claves: '', regex: 'pedido\\s*#?\\d{4,6}', mensaje: 'Gracias, ya busco tu pedido. En unos minutos te confirmo su estado.', inicio: '', fin: '', activo: true },
     { id: 'a1', nombre: 'Fuera de horario', numero: 'n1', cuando: 'Fuera de horario', claves: '', coincidencia: '', mensaje: 'Gracias por escribir. Nuestro horario es de 9:00 a 18:00; en cuanto abramos te atendemos.', inicio: '', fin: '', activo: true },
     { id: 'a2', nombre: 'Bienvenida de octubre', numero: 'n2', cuando: 'Por defecto', claves: '', coincidencia: '', mensaje: '¡Hola! Para atenderte mejor compártenos tu nombre y ciudad.', inicio: '2026-10-01T00:00', fin: '2026-10-31T23:59', activo: true },
-    { id: 'a3', nombre: 'Respuesta a "precio"', numero: null, cuando: 'Palabras clave', claves: 'precio, costo', coincidencia: 'Palabra completa', mensaje: 'Nuestra lista de precios está en el catálogo. ¿Te lo envío?', inicio: '', fin: '', activo: false }
+    { id: 'a3', nombre: 'Respuesta a "precio"', numero: null, cuando: 'Palabras clave', claves: 'precio, costo', mensaje: 'Nuestra lista de precios está en el catálogo. ¿Te lo envío?', inicio: '', fin: '', activo: false }
   ],
 
   bajas: [
