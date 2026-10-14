@@ -373,3 +373,23 @@ body.movil .bloque-h { grid-template-columns: 1fr 1fr; } body.movil .bloque-h .c
 .img-prev { width: 64px; height: 64px; border: 1px dashed var(--linea); border-radius: 12px; display: grid; place-items: center; overflow: hidden; background: #f8fafc; color: #64748b; }
 .img-prev.ancho { width: 160px; height: 48px; } .img-prev img { width: 100%; height: 100%; object-fit: contain; }
 .aviso-ia { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin: 0 0 10px; }
+.tag-fila { display: inline-flex; align-items: center; gap: 6px; margin: 0 10px 6px 0; } .tag-fila.fila-inactiva .tag { opacity: .45; text-decoration: line-through; } a.tag { cursor: pointer; }
+/* Crear plantilla: ventana grande con la vista previa fija a la derecha */
+.m-caja.extra { width: min(1240px, 96vw); height: 94vh; max-height: 94vh; }
+.m-caja.extra #formPl.dos { grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: 24px; align-items: start; }
+.m-caja.extra #formPl.dos > div:last-child { position: sticky; top: 0; align-self: start; max-height: calc(94vh - 150px); overflow: auto; }
+.m-caja.extra .m-cuerpo { flex: 1; }
+@media (max-width: 900px) { .m-caja.extra #formPl.dos { grid-template-columns: 1fr; } .m-caja.extra #formPl.dos > div:last-child { position: static; max-height: none; } }
+body.movil .m-caja.extra { width: 100%; height: auto; max-height: 92vh; }
+body.movil .m-caja.extra #formPl.dos { grid-template-columns: 1fr; } body.movil .m-caja.extra #formPl.dos > div:last-child { position: static; max-height: none; }
+.subida-pl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pl-img { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 6px; background: #e2e8f0; }
+.pl-doc { background: #f1f5f9; border-radius: 8px; padding: 10px; margin-bottom: 6px; font-size: 13px; }
+.atajo-var { display: inline-block; font-size: 12px; color: var(--marca); cursor: pointer; margin: -6px 0 10px; }
+/* Empresa: logo e ícono, cada uno en su línea con la imagen a la derecha */
+.imgs-emp { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.fila-img { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; }
+.fila-img-datos { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.et-img { font-size: 13px; font-weight: 600; } .fila-img .tipo-p { margin: 0 0 4px; }
+.fila-img .img-prev { width: 72px; height: 72px; } .fila-img .img-prev.ancho { width: 180px; height: 52px; }
+body.movil .fila-img .img-prev.ancho { width: 120px; height: 40px; } body.movil .fila-img .img-prev { width: 56px; height: 56px; }

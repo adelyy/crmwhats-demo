@@ -187,7 +187,7 @@ const PALETA = [['#2563eb', 'Azul'], ['#0e7490', 'Turquesa'], ['#047857', 'Verde
 // Campos que dependen de otra opción: se ocultan (no se desactivan) cuando no aplican y conservan lo escrito.
 const siHtml = (html, campo, valor, campo2, valor2) => `<div data-si-campo="${campo}" data-si-valor="${valor}"${campo2 ? ` data-si-campo2="${campo2}" data-si-valor2="${valor2}"` : ''}>${html}</div>`;
 function aplicarSi() {
-  document.querySelectorAll('#modal form [data-si-campo]').forEach(el => {
+  document.querySelectorAll('#modal form [data-si-campo], #formEmp [data-si-campo]').forEach(el => {
     const cumple = (campo, valor) => { const ctrl = el.closest('form').elements[campo], v = ctrl ? String(ctrl.value) : ''; return valor.split('|').some(x => v.startsWith(x)); };
     el.classList.toggle('oculto', !(cumple(el.dataset.siCampo, el.dataset.siValor) && (!el.dataset.siCampo2 || cumple(el.dataset.siCampo2, el.dataset.siValor2))));
   });
@@ -345,8 +345,9 @@ function chat(v) {
 // Línea que explica qué significa el permiso del contacto para las campañas.
 function textoPermiso(c) {
   if (c.consent === 'baja') { const b = DB.bajas.find(x => soloDig(x.tel) === soloDig(c.tel)); return `<small class="nota">${b ? `Desde el ${esc(b.fecha)}, ${{ 'Botón': 'con el botón de baja', 'Palabra BAJA': 'al escribir BAJA', 'Manual': 'lo dio de baja un usuario', 'Rechazo de Meta': 'Meta rechazó el envío' }[b.origen] || esc(b.origen)}${b.campana && b.campana !== '—' ? ', en la campaña ' + esc(b.campana) : ''}. ` : ''}No recibe campañas; sí puedes atenderlo cuando escriba.</small>`; }
-  if (c.consent === 'sin') return '<small class="nota">No ha dicho ni que sí ni que no. Las campañas sí le llegan; solo quedan fuera quienes se dieron de baja.</small>';
-  return '<small class="nota">Aceptó recibir campañas.</small>';
+  const regla = ' Es solo un registro: no cambia a quién le llegan las campañas; le llegan a todos menos a quien se dio de baja.';
+  if (c.consent === 'sin') return '<small class="nota">No ha dicho ni que sí ni que no.' + regla + '</small>';
+  return `<small class="nota">Aceptó recibir campañas${c.permiso ? ' el ' + esc(c.permiso.fecha) + ', ' + esc(c.permiso.origen) : ''}.${regla}</small>`;
 }
 function detalle(v) {
   if (v.grupo) return `<header class="d-cab"><button class="icono solo-movil" data-accion="panel" data-p="chat">${ico('atras')}</button><h3>Grupo</h3></header><div class="d-sec"><h4>${esc(v.grupo)}</h4><p class="nota">Grupo oficial por Cloud API: máximo 8 participantes, ingreso por enlace de invitación.</p><p>Participantes: Mariana Solís, Lucía Fernández, Daniel Ochoa.</p></div>`;
@@ -359,7 +360,7 @@ function detalle(v) {
     <div class="d-sec"><h5>Tags ${btn('+ Tag', 'tagModal', 'enlace')}</h5><div class="tags">${todos.length ? todos.map(t => `<span class="tag" style="--c:${TAG(t).c}">${esc(TAG(t).n)}<i data-accion="quitarTag" data-id="${t}">×</i></span>`).join('') : '<small class="nota">Sin tags</small>'}</div></div>
     <div class="d-sec"><h5>Tickets ${puede('AS') ? btn('+ Levantar ticket', 'ticketModal', 'enlace') : ''}</h5>${tickets.length ? tickets.map(k => `<a class="d-ticket" data-accion="verTicket" data-id="${k.id}"><span>#${k.id} · ${esc(k.motivo)}</span>${estadoChip(k.estado)}</a>`).join('') : '<small class="nota">Sin tickets</small>'}</div>
     <div class="d-sec"><h5>Notas internas ${btn('+ Nota', 'notaModal', 'enlace')}</h5>${c.notas.length ? c.notas.map(n => `<div class="d-nota">${esc(n.t)}<small>${esc(U(n.por).nombre)} · ${n.f}</small></div>`).join('') : '<small class="nota">Sin notas</small>'}</div>
-    <div class="d-sec"><h5>Permiso para campañas</h5><div class="d-fila">${chip(consent[0], consent[1])}${c.consent !== 'baja' ? btn('Dar de baja', 'baja', 'enlace rojo') : ''}</div>${textoPermiso(c)}${v.campana ? `<small class="nota">Llegó por la campaña: ${esc(DB.campanas.find(k => k.id === v.campana).nombre)}</small>` : ''}</div>`;
+    <div class="d-sec"><h5>Permiso para campañas</h5><div class="d-fila">${chip(consent[0], consent[1])}${c.consent === 'sin' ? btn('Registrar que acepta', 'registrarPermiso', 'enlace') : c.consent === 'otorgado' ? btn('Quitar registro', 'quitarPermiso', 'enlace') : ''}${c.consent !== 'baja' ? btn('Dar de baja', 'baja', 'enlace rojo') : ''}</div>${textoPermiso(c)}${v.campana ? `<small class="nota">Llegó por la campaña: ${esc(DB.campanas.find(k => k.id === v.campana).nombre)}</small>` : ''}</div>`;
 }
 function refrescaChat() {
   if (E.ruta !== 'bandeja') return;
@@ -473,7 +474,8 @@ function nuevaCampana() {
     btn('Cancelar', 'descartarCamp') + btn('Revisar antes de enviar', 'revisarCamp', 'primario'), 'ancho');
   restauraBorrador();
 }
-const previaPlantilla = p => `<div class="pl-prev"><div class="msg mio">${!p.tarjetas && p.encTipo && p.encTipo !== 'Ninguno' && p.encTipo !== 'Texto' ? `<div class="pl-medio">${esc(p.encTipo)}</div>` : ''}${p.encabezado ? `<strong class="pl-enc">${esc(p.encabezado)}</strong>` : ''}${p.oferta ? `<div class="pl-oferta"><b>${esc(p.oferta)}</b>${p.vence ? '<small>Vence en 2 días</small>' : ''}${p.codigo ? `<small>Código: ${esc(p.codigo)}</small>` : ''}</div>` : ''}<div>${esc(p.cuerpo)}</div>${p.pie ? `<small class="pl-pie">${esc(p.pie)}</small>` : ''}${(p.botones || []).map(b => `<div class="b-boton">${esc(b)}</div>`).join('')}</div>${p.tarjetas ? `<div class="pl-cards">${p.tarjetas.map(t => `<div class="pl-card"><div class="pl-medio">${esc(p.encTipo || 'Foto')}</div><div>${esc(t.texto)}</div>${t.botones.map(b => `<div class="b-boton">${esc(b)}</div>`).join('')}</div>`).join('')}</div>` : ''}</div>`;
+const medioPrev = (tipo, a) => a && a.medio === tipo ? (tipo === 'Foto' ? `<img class="pl-img" src="${a.url}" alt="">` : tipo === 'Video' ? `<video class="pl-img" src="${a.url}" controls muted></video>` : `<div class="pl-doc">📄 ${esc(a.nombre)}</div>`) : `<div class="pl-medio">${esc(tipo)}</div>`;
+const previaPlantilla = p => `<div class="pl-prev"><div class="msg mio">${!p.tarjetas && p.encTipo && p.encTipo !== 'Ninguno' && p.encTipo !== 'Texto' ? (p.encTipo === 'Ubicación' ? '<div class="pl-medio">Ubicación</div>' : medioPrev(p.encTipo, p.archivo)) : ''}${p.encabezado ? `<strong class="pl-enc">${esc(p.encabezado)}</strong>` : ''}${p.oferta ? `<div class="pl-oferta"><b>${esc(p.oferta)}</b>${p.vence ? '<small>Vence en 2 días</small>' : ''}${p.codigo ? `<small>Código: ${esc(p.codigo)}</small>` : ''}</div>` : ''}<div>${esc(p.cuerpo)}</div>${p.pie ? `<small class="pl-pie">${esc(p.pie)}</small>` : ''}${(p.botones || []).map(b => `<div class="b-boton">${esc(b)}</div>`).join('')}</div>${p.tarjetas ? `<div class="pl-cards">${p.tarjetas.map(t => `<div class="pl-card">${medioPrev(p.encTipo || 'Foto', t.archivo)}<div>${esc(t.texto)}</div>${t.botones.map(b => `<div class="b-boton">${esc(b)}</div>`).join('')}</div>`).join('')}</div>` : ''}</div>`;
 // Embudo de una campaña de envío: los embudos generales activos del número elegido, o uno nuevo solo para la campaña.
 const embudosCamp = num => DB.embudos.filter(b => b.tipo === 'general' && !b.inactivo && (!b.numero || b.numero === num));
 const opsEmbCamp = num => embudosCamp(num).map(b => `<option value="${b.id}">${esc(b.n)}</option>`).join('');
@@ -698,9 +700,23 @@ const NOTA_CAT = {
   'Autenticación': 'Autenticación: solo códigos de un solo uso. Meta pone el texto; no admite archivos, enlaces ni emojis.'
 };
 const MEDIO_PL = { Foto: 'JPG o PNG, hasta 5 MB', Video: 'MP4 (H.264 y AAC), hasta 16 MB', Documento: 'PDF, hasta 100 MB' };
-const muestraPl = (et, nombre, medio) => `<label class="campo"><span>${et} *</span><small class="tipo-p">Archivo de muestra para la revisión de Meta: ${MEDIO_PL[medio] || MEDIO_PL.Foto}</small><select name="${nombre}"><option>muestra.${medio === 'Video' ? 'mp4' : medio === 'Documento' ? 'pdf' : 'jpg'} (subido)</option><option>Subir otro archivo (simulado)</option></select></label>`;
+// Archivos de la plantilla: siempre se suben con un botón (no se toman archivos guardados) y se ven en la vista previa.
+let subidasPl = {};
+const muestraPl = (et, nombre, medio) => `<div class="campo"><span>${et} *</span><small class="tipo-p">Se sube aquí y va a Meta como muestra: ${MEDIO_PL[medio] || MEDIO_PL.Foto}</small><div class="subida-pl"><label class="btn">Subir archivo<input type="file" data-subir="${nombre}" hidden></label><small class="nota" id="nom_${nombre}">${subidasPl[nombre] ? esc(subidasPl[nombre].nombre) : 'Sin archivo'}</small></div></div>`;
+const ACEPTA_PL = { Foto: [/^image\/(jpeg|png)$/, 5, 'JPG o PNG'], Video: [/^video\/mp4$/, 16, 'MP4'], Documento: [/^application\/pdf$/, 100, 'PDF'] };
+function medioDeSubida(nombre) { const f = $('#formPl'); if (nombre === 'muestraV') return 'Video'; if (nombre === 'muestraD') return 'Documento'; return f && f.elements.medio ? f.elements.medio.value : 'Foto'; }
+function subirPl(input) {
+  const a = input.files[0], nombre = input.dataset.subir; if (!a) return;
+  const medio = medioDeSubida(nombre), [tipo, mb, txt] = ACEPTA_PL[medio];
+  if (!tipo.test(a.type)) return aviso(`Este encabezado es de ${medio.toLowerCase()}: sube un archivo ${txt}`);
+  if (a.size > mb * 1024 * 1024) return aviso(`El archivo pesa más de ${mb} MB, el máximo de Meta para ${medio.toLowerCase()}`);
+  if (subidasPl[nombre]) URL.revokeObjectURL(subidasPl[nombre].url);
+  subidasPl[nombre] = { nombre: a.name, url: URL.createObjectURL(a), medio };
+  const d = $('#nom_' + nombre); if (d) d.textContent = a.name;
+  actualizaPl();
+}
 const botonesEnlace = max => Array.from({ length: max }, (_, i) => `<div class="f-grupo"><h4>Botón de enlace ${max > 1 ? i + 1 + ' ' : ''}${max > 1 || i ? '(opcional)' : ''}</h4><div class="dos-campos">${cmp('Texto del botón (25)', 'urlTxt' + i, '', 'maxlength="25" placeholder="Ver más"')}${cmpSel('Tipo de enlace', 'urlTipo' + i, ['Fijo', 'Con variable al final'], 'Fijo')}</div>${cmp('Enlace (hasta 2,000; empieza con https://)', 'urlUrl' + i, '', 'maxlength="2000" placeholder="https://tienda.com/pedido/"')}</div>`).join('');
-const FMT_VARS = () => cmpSel('Formato de las variables', 'fmtVars', ['Numeradas: {{1}}, {{2}}…', 'Con nombre: {{nombre}}, {{pedido}}…'], 'Numeradas: {{1}}, {{2}}…') + '<p class="nota">Numeradas: en orden, empezando en {{1}}. Con nombre: minúsculas y guion bajo. El cuerpo no puede empezar ni terminar con una variable, ni tener dos seguidas.</p>';
+const FMT_VARS = () => '<p class="nota">Variables: siempre numeradas, {{1}}, {{2}}, {{3}}…, en orden desde {{1}}. El cuerpo no puede empezar ni terminar con una variable, ni tener dos seguidas.</p>';
 function camposPl(t) {
   const baja = ' Responde BAJA para no recibir más mensajes.', ejemplos = '<div id="ejemplosPl"></div>';
   if (t === 'estandar') return FMT_VARS() +
@@ -745,7 +761,7 @@ function camposPl(t) {
 }
 // Variables y ejemplos: se detectan del encabezado de texto, del cuerpo, de las tarjetas y de los enlaces con variable.
 function variablesPl(f) {
-  const nom = (f.fmtVars || '').startsWith('Con nombre'), vars = [];
+  const nom = false, vars = [];
   if (f.encTexto && (f.tipo !== 'estandar' || f.encTipo === 'Texto')) vars.push({ id: 'h', et: 'Encabezado', t: f.encTexto });
   if (f.tipo !== 'auth') vars.push({ id: 'b', et: 'Cuerpo', t: f.cuerpo || '' });
   if (f.tipo === 'carrusel') for (let i = 0; i < +f.nTarjetas; i++) vars.push({ id: 'c' + i, et: 'Tarjeta ' + (i + 1), t: f['tTexto' + i] || '' });
@@ -759,7 +775,7 @@ function erroresVars(f) {
     const t = v.t.trim();
     if (v.id === 'h' && v.ks.length > 1) err.push('El encabezado admite una sola variable');
     if (nom && v.ks.some(k => !/^[a-z_][a-z0-9_]*$/.test(k))) err.push(v.et + ': las variables con nombre van en minúsculas y guion bajo, por ejemplo {{nombre}}');
-    if (!nom && v.ks.some(k => !/^\d+$/.test(k))) err.push(v.et + ': con variables numeradas usa {{1}}, {{2}}…');
+    if (!nom && v.ks.some(k => !/^\d+$/.test(k))) err.push(v.et + ': las variables van numeradas: {{1}}, {{2}}…');
     if (!nom && v.ks.length && v.ks.every(k => /^\d+$/.test(k)) && v.ks.map(Number).sort((a, b) => a - b).some((k, i) => k !== i + 1)) err.push(v.et + ': las variables numeradas van en orden, empezando en {{1}}');
     if (v.id === 'b' && (/^\{\{\w+\}\}/.test(t) || /\{\{\w+\}\}[.!?…]?$/.test(t))) err.push('El cuerpo no puede empezar ni terminar con una variable');
     if (/\}\}\s*\{\{/.test(t)) err.push(v.et + ': no puede haber dos variables seguidas');
@@ -774,14 +790,16 @@ function pintaEjemplos() {
 }
 function datosPl() {
   const f = Object.fromEntries(new FormData($('#formPl'))), t = f.tipo, lineas = s => (s || '').split('\n').map(x => x.trim()).filter(Boolean);
-  const p = { tipo: t, nombre: (f.nombre || '').trim(), cat: f.cat, idioma: f.idioma || 'Español (MX)', formato: TIPOS_PL.find(x => x.id === t).n, cuerpo: f.cuerpo || '', botones: [], envios: 0, clics: 0, fmtVars: (f.fmtVars || '').startsWith('Con nombre') ? 'Con nombre' : 'Numeradas' };
-  const { vars } = variablesPl(f); p.vars = {};
-  vars.filter(v => v.id === 'b' || v.id === 'h').forEach(v => v.ks.forEach(k => { const ej = f['ej_' + v.id + '_' + k]; p.vars[k] = (isNaN(k) ? k.replace(/_/g, ' ') : 'Variable ' + k) + (ej ? ' (ej. ' + ej + ')' : ''); }));
+  const p = { tipo: t, nombre: (f.nombre || '').trim(), cat: f.cat, idioma: f.idioma || 'Español (MX)', formato: TIPOS_PL.find(x => x.id === t).n, cuerpo: f.cuerpo || '', botones: [], envios: 0, clics: 0, fmtVars: 'Numeradas' };
+  const { vars } = variablesPl(f);
+  p.ejemplos = { h: {}, b: {}, c: [] };
+  vars.forEach(v => v.ks.forEach(k => { const ej = f['ej_' + v.id + '_' + k] || ''; if (v.id === 'h' || v.id === 'b') p.ejemplos[v.id][k] = ej; else if (v.url) p.ejemplos.u = ej; else { const i = +v.id.slice(1); p.ejemplos.c[i] = { ...(p.ejemplos.c[i] || {}), [k]: ej }; } }));
   const enlaces = n => Array.from({ length: n }, (_, i) => f['urlTxt' + i] ? '↗ ' + f['urlTxt' + i] : '').filter(Boolean);
-  const din = [0, 1].find(i => (f['urlTipo' + i] || '').startsWith('Con variable') && f['urlTxt' + i]); if (din !== undefined) p.urlVar = 'Final del enlace de "' + f['urlTxt' + din] + '"';
-  if (t === 'estandar') { p.encTipo = f.encTipo; p.encabezado = f.encTipo === 'Texto' ? f.encTexto : ''; p.pie = f.pie; p.botones = [...lineas(f.rapidas), ...enlaces(2)]; if (f.telTxt) p.botones.push('✆ ' + f.telTxt); if (f.cat === 'Marketing' && !p.botones.includes('Darme de baja')) p.botones.push('Darme de baja'); }
-  if (t === 'carrusel') { p.encTipo = f.medio; const tipos = [f.tTipo1, f.tTipo2].filter(x => x && x !== 'Ninguno'), pre = { Enlace: '↗ ', Llamar: '✆ ', 'Respuesta rápida': '' }; p.tarjetas = Array.from({ length: +f.nTarjetas }, (_, i) => ({ texto: f['tTexto' + i] || '', botones: tipos.map((x, j) => pre[x] + (f['tB' + (j + 1) + '_' + i] || '')) })); }
-  if (t === 'oferta') { p.encTipo = f.medio; p.oferta = f.oferta; p.vence = !!f.vence; p.codigo = f.codigo; p.botones = [f.codigo ? '⧉ Copiar código' : '', ...enlaces(1)].filter(Boolean); }
+  const din = [0, 1].find(i => (f['urlTipo' + i] || '').startsWith('Con variable') && f['urlTxt' + i]); if (din !== undefined) p.urlVar = true;
+  const arch = k => subidasPl[k] || null;
+  if (t === 'estandar') { p.archivo = arch({ Foto: 'muestraF', Video: 'muestraV', Documento: 'muestraD' }[f.encTipo]); p.encTipo = f.encTipo; p.encabezado = f.encTipo === 'Texto' ? f.encTexto : ''; p.pie = f.pie; p.botones = [...lineas(f.rapidas), ...enlaces(2)]; if (f.telTxt) p.botones.push('✆ ' + f.telTxt); if (f.cat === 'Marketing' && !p.botones.includes('Darme de baja')) p.botones.push('Darme de baja'); }
+  if (t === 'carrusel') { p.encTipo = f.medio; const tipos = [f.tTipo1, f.tTipo2].filter(x => x && x !== 'Ninguno'), pre = { Enlace: '↗ ', Llamar: '✆ ', 'Respuesta rápida': '' }; p.tarjetas = Array.from({ length: +f.nTarjetas }, (_, i) => ({ archivo: arch('tM' + i), texto: f['tTexto' + i] || '', botones: tipos.map((x, j) => pre[x] + (f['tB' + (j + 1) + '_' + i] || '')) })); }
+  if (t === 'oferta') { p.archivo = arch('muestraF'); p.encTipo = f.medio; p.oferta = f.oferta; p.vence = !!f.vence; p.codigo = f.codigo; p.botones = [f.codigo ? '⧉ Copiar código' : '', ...enlaces(1)].filter(Boolean); }
   if (t === 'cupon') { p.encabezado = f.encTexto; p.codigo = f.codigo; p.botones = [f.rapidas, f.codigo ? '⧉ Copiar código' : '', ...enlaces(1), 'Darme de baja'].filter(Boolean); }
   if (t === 'auth') { p.cuerpo = '{{1}} es tu código de verificación.' + (f.seg ? ' Por tu seguridad, no lo compartas.' : ''); p.pie = f.min ? `Este código vence en ${f.min} minutos.` : ''; p.botones = (f.otp || '').startsWith('Sin toque') ? [] : ['⧉ ' + (f.btnAuth || 'Copiar código')]; p.otp = f.otp; p.min = f.min ? +f.min : null; p.paquete = f.paquete; p.firma = f.firma; p.terminos = !!f.terminos; }
   return p;
@@ -792,7 +810,7 @@ function actualizaPl(ev) {
   if (f.elements.nTarjetas) f.querySelectorAll('.tarjeta-pl').forEach(el => el.classList.toggle('oculto', +el.dataset.i >= +f.elements.nTarjetas.value));
   if (f.elements.cat && $('#notaCat')) $('#notaCat').textContent = NOTA_CAT[f.elements.cat.value] || '';
   const n = ev && ev.target && ev.target.name || '';
-  if (!ev || ['cuerpo', 'encTexto', 'encTipo', 'fmtVars', 'nTarjetas'].includes(n) || /^(tTexto|urlTipo|urlTxt)/.test(n)) pintaEjemplos();
+  if (!ev || ['cuerpo', 'encTexto', 'encTipo', 'nTarjetas'].includes(n) || /^(tTexto|urlTipo|urlTxt)/.test(n)) pintaEjemplos();
   const err = $('#errPl'); if (err) { const e = erroresVars(Object.fromEntries(new FormData(f))); err.innerHTML = e.map(x => '<div class="rojo">' + esc(x) + '</div>').join(''); }
   pintaPreviaPl();
 }
@@ -813,7 +831,7 @@ function modalPlantilla(tipo = 'estandar', nombre = '') {
       ${camposPl(tipo)}
       <div id="errPl"></div>
     </div><div><span class="et">Vista previa</span><div class="previa" id="previaPl"></div><p class="nota">Meta revisa la plantilla antes de que se pueda usar; normalmente responde en minutos y puede tardar hasta 24 horas. Si la rechaza, se muestra el motivo.</p></div></form>`,
-    btn('Cancelar', 'cerrarModal') + btn('Enviar a aprobación', 'guardarPl', 'primario'), 'ancho');
+    btn('Cancelar', 'cerrarModal') + btn('Enviar a aprobación', 'guardarPl', 'primario'), 'ancho extra');
   aplicarSi();
   actualizaPl();
 }
@@ -826,6 +844,9 @@ function guardarPl() {
   const ev = erroresVars(f); if (ev.length) return aviso(ev[0]);
   const faltaEj = [...$('#formPl').querySelectorAll('#ejemplosPl input')].find(i => !i.value.trim()); if (faltaEj) return aviso('Falta un ejemplo: ' + faltaEj.closest('label').querySelector('span').textContent.replace(' *', ''));
   if (p.tipo === 'estandar' && f.encTipo === 'Texto' && !(f.encTexto || '').trim()) return aviso('Falta el texto del encabezado');
+  if (!ed && ['Foto', 'Video', 'Documento'].includes(p.encTipo) && !p.tarjetas && !p.archivo) return aviso('Sube el archivo de muestra del encabezado');
+  if (!ed && p.tarjetas) { const sin = p.tarjetas.findIndex(x => !x.archivo || x.archivo.medio !== p.encTipo); if (sin >= 0) return aviso('Tarjeta ' + (sin + 1) + ': sube su archivo de ' + p.encTipo.toLowerCase()); }
+  if (p.archivo && p.archivo.medio !== p.encTipo) return aviso('El archivo subido no es de ' + p.encTipo.toLowerCase() + '; súbelo de nuevo');
   if (p.pie && /\{\{/.test(p.pie)) return aviso('El pie de página no admite variables');
   for (let i = 0; i < 2; i++) if (f['urlTxt' + i] && !/^https:\/\/\S+$/.test(f['urlUrl' + i] || '')) return aviso('El botón de enlace necesita un enlace que empiece con https://');
   if (f.telTxt && !/^\+\d[\d ]{7,19}$/.test(f.telNum || '')) return aviso('El botón de llamada necesita el teléfono con + y código de país');
@@ -847,7 +868,9 @@ function guardarPl() {
 }
 // Envío de una plantilla desde el chat: se piden todos sus parámetros antes de poder enviarla.
 const varsDe = t => [...new Set([...(t || '').matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]))];
-const etVar = (vars, k) => (vars || {})[k] || (isNaN(k) ? k : 'Variable ' + k);
+// Las variables no tienen nombre: el campo dice qué variable es y muestra el ejemplo que se declaró al crear la plantilla.
+const ejDe = (p, lugar, k, i) => { const e = p.ejemplos || {}; const v = lugar === 'c' ? ((e.c || [])[i] || {})[k] : lugar === 'u' ? e.u : (e[lugar] || {})[k]; return v ? 'placeholder="Ejemplo: ' + esc(v) + '"' : ''; };
+const btnUrl = p => ((p.botones || []).find(b => b.startsWith('↗')) || '↗ enlace').slice(2);
 const llenar = (t, pref, vals) => (t || '').replace(/\{\{(\w+)\}\}/g, (m, k) => vals[pref + k] || m);
 let plEnvio = null;
 // Datos que pide una plantilla al enviarla, según la documentación de Meta (componentes del mensaje de plantilla):
@@ -858,8 +881,9 @@ let plPrueba = false;
 const esAuth = p => p.tipo === 'auth' || p.formato === 'Autenticación';
 function modalEnviarPl(id, prueba) {
   const p = DB.plantillas.find(x => x.id === id), v = prueba ? null : CONV(), c = v && v.contacto ? C(v.contacto) : null; plEnvio = p; plPrueba = !!prueba;
-  const pre = et => /nombre/i.test(et) && c ? c.nombre.split(' ')[0] : '';
-  const inp = (et, nombre, tipo, valor = '', extra = '') => `<label class="campo"><span>${esc(et)} *</span><small class="tipo-p">${esc(tipo)}</small><input name="${nombre}" value="${esc(valor)}" required ${extra}></label>`;
+  // En el chat sí se conoce al contacto: un atajo de un clic pone su nombre, y lo decide la persona.
+  const nomC = c ? c.nombre.split(' ')[0] : '', atajo = n => nomC && !esAuth(p) && /^(h_|b_|c\d+_)/.test(n) ? `<a class="atajo-var" data-accion="usarNombreVar" data-campo="${n}" data-v="${esc(nomC)}">Usar el nombre del contacto (${esc(nomC)})</a>` : '';
+  const inp = (et, nombre, tipo, valor = '', extra = '') => `<label class="campo"><span>${esc(et)} *</span><small class="tipo-p">${esc(tipo)}</small><input name="${nombre}" value="${esc(valor)}" required ${extra}></label>${atajo(nombre)}`;
   const arch = (et, nombre, tipo) => `<label class="campo"><span>${esc(et)} *</span><small class="tipo-p">${esc(tipo)}</small><select name="${nombre}"><option>Usar el archivo guardado con la plantilla</option><option>Subir otro archivo (simulado)</option></select></label>`;
   const medioTipo = { Foto: 'Imagen JPG o PNG, hasta 5 MB', Video: 'Video MP4, hasta 16 MB', Documento: 'Documento PDF, hasta 100 MB; se envía con su nombre de archivo' };
   let f = '';
@@ -870,12 +894,12 @@ function modalEnviarPl(id, prueba) {
   }
   if (!p.tarjetas && ['Foto', 'Video', 'Documento'].includes(p.encTipo)) f += arch(p.encTipo + ' del encabezado', 'hMedio', medioTipo[p.encTipo]);
   if (p.encTipo === 'Ubicación') f += inp('Latitud', 'lat', 'Número decimal, por ejemplo 25.6866', '', 'inputmode="decimal"') + inp('Longitud', 'lng', 'Número decimal, por ejemplo -100.3161', '', 'inputmode="decimal"') + inp('Nombre del lugar', 'lugar', 'Texto') + inp('Dirección', 'direccion', 'Texto');
-  for (const k of varsDe(p.encabezado)) f += inp('Encabezado: ' + etVar(p.vars, k), 'h_' + k, 'Texto · encabezado de hasta 60 caracteres', pre(etVar(p.vars, k)));
-  for (const k of varsDe(p.cuerpo)) f += esAuth(p) ? inp('Código de verificación', 'b_' + k, 'Texto de hasta 15 caracteres; va en el cuerpo y en el botón', '', 'maxlength="15"') : inp(etVar(p.vars, k), 'b_' + k, 'Texto · variable ' + (isNaN(k) ? 'con nombre {{' + k + '}}' : '{{' + k + '}}') + ' del cuerpo', pre(etVar(p.vars, k)));
+  for (const k of varsDe(p.encabezado)) f += inp('Variable {{' + k + '}} del encabezado', 'h_' + k, 'Texto; el encabezado completo es de hasta 60 caracteres', '', ejDe(p, 'h', k));
+  for (const k of varsDe(p.cuerpo)) f += esAuth(p) ? inp('Código de verificación', 'b_' + k, 'Texto de hasta 15 caracteres; va en el cuerpo y en el botón', '', 'maxlength="15"') : inp('Variable {{' + k + '}} del cuerpo', 'b_' + k, 'Texto', '', ejDe(p, 'b', k));
   if (p.oferta && p.vence) f += inp('La oferta vence el', 'vence', 'Fecha y hora; Meta la recibe en milisegundos', aLocal(new Date(Date.now() + 2 * DIA)), `type="datetime-local" min="${aLocal(new Date())}"`);
-  if (p.codigo) f += inp('Código que se copia', 'codigo', 'Código de cupón de hasta ' + (p.oferta ? 15 : 20) + ' caracteres', p.codigo, `maxlength="${p.oferta ? 15 : 20}"`);
-  if (p.urlVar) f += inp('Botón de enlace: ' + p.urlVar, 'u', 'Texto que se agrega al final del enlace; sin espacios');
-  (p.tarjetas || []).forEach((t, i) => { f += `<div class="f-grupo"><h4>Tarjeta ${i + 1}</h4>${arch(p.encTipo || 'Foto', 'c' + i + '_medio', medioTipo[p.encTipo || 'Foto'])}${varsDe(t.texto).map(k => inp(etVar(t.vars, k), 'c' + i + '_' + k, 'Texto · variable de la tarjeta')).join('')}</div>`; });
+  if (p.codigo) f += inp('Código que se copia', 'codigo', 'Código de cupón de hasta ' + (p.oferta ? 15 : 20) + ' caracteres', '', `maxlength="${p.oferta ? 15 : 20}" placeholder="Ejemplo: ${esc(p.codigo)}"`);
+  if (p.urlVar) f += inp('Final del enlace del botón «' + btnUrl(p) + '»', 'u', 'Texto que se agrega al final del enlace; sin espacios', '', ejDe(p, 'u'));
+  (p.tarjetas || []).forEach((t, i) => { f += `<div class="f-grupo"><h4>Tarjeta ${i + 1}</h4>${arch(p.encTipo || 'Foto', 'c' + i + '_medio', medioTipo[p.encTipo || 'Foto'])}${varsDe(t.texto).map(k => inp('Variable {{' + k + '}} de la tarjeta ' + (i + 1), 'c' + i + '_' + k, 'Texto', '', ejDe(p, 'c', k, i))).join('')}</div>`; });
   const titulo = (prueba ? 'Probar plantilla · ' : 'Enviar plantilla · ') + esc(p.nombre);
   const nota = prueba ? 'Llena los datos que esta plantilla necesita. Meta rechaza una plantilla a la que le falta un dato, así que el botón se activa cuando están todos.' : 'Llena los datos de esta plantilla. Meta rechaza una plantilla a la que le falta un dato, así que el botón de enviar se activa cuando están todos.';
   abrirModal(titulo, `<form id="formEnv" class="dos"><div><p class="nota">${nota}</p>${f || '<p>Esta plantilla no tiene datos por llenar.</p>'}</div><div><span class="et">${prueba ? 'Así llegará el mensaje' : 'Así lo recibirá ' + (c ? esc(c.nombre.split(' ')[0]) : 'el grupo')}</span><div class="previa" id="previaEnv"></div><p class="nota" id="faltanEnv"></p>${prueba ? '<details class="nota"><summary>Datos que se mandan a Meta</summary><pre class="json-pl" id="jsonEnv"></pre></details><p class="nota">Es una prueba: el prototipo no envía nada. Ya programado, este botón manda la plantilla al número de destino y se cobra como cualquier envío de su categoría.</p>' : ''}</div></form>`,
@@ -921,7 +945,7 @@ function vPlantillas() {
   const q = (E.buscaPl || '').toLowerCase().trim();
   const lista = plantillasDe(E.numPl).filter(p => !q || (p.nombre + ' ' + p.cuerpo + ' ' + p.cat + ' ' + p.formato).toLowerCase().includes(q));
   const busca = `<input id="buscaPl" class="buscador" placeholder="Buscar plantilla por nombre o texto" value="${esc(E.buscaPl || '')}">`;
-  const tarjeta = p => `<div class="carta"><div class="c-top"><strong>${p.nombre}</strong>${estadoChip(p.estado)}</div><div class="d-fila">${chip(p.cat, 'azul')}${chip(p.formato, 'gris')}${chip(p.idioma || 'Español (MX)', 'gris')}</div><div class="previa">${previaPlantilla(p)}</div>${p.motivo ? `<small class="rojo">${esc(p.motivo)}</small>` : ''}<div class="metricas-pl"><div><small>Envíos</small><b>${(p.envios || 0).toLocaleString('es-MX')}</b></div><div><small>Clics</small><b>${(p.clics || 0).toLocaleString('es-MX')}</b></div><div title="Contactos que llegaron a una etapa Ganada dentro de los 15 días siguientes al envío"><small>Ventas</small><b>${(p.ventas || 0).toLocaleString('es-MX')}</b></div></div><small class="nota">Números: ${esc(numerosDeCuenta(p.cuenta).map(n => n.nombre).join(', ') || 'ninguno')}</small><div class="acciones-pl">${p.estado === 'Aprobada' ? btn('Probar plantilla', 'probarPl', '', `data-id="${p.id}"`) : ''}${['Aprobada', 'Rechazada', 'Pausada'].includes(p.estado) ? btn('Editar', 'editarPl', '', `data-id="${p.id}"`) : ''}${btn('Borrar', 'borrarPl', 'enlace rojo', `data-id="${p.id}"`)}</div></div>`;
+  const tarjeta = p => `<div class="carta"><div class="c-top"><strong>${p.nombre}</strong>${estadoChip(p.estado)}</div><div class="d-fila">${chip(p.cat, 'azul')}${chip(p.formato, 'gris')}${chip(p.idioma || 'Español (MX)', 'gris')}</div><div class="previa">${previaPlantilla(p)}</div>${p.motivo ? `<small class="rojo">${esc(p.motivo)}</small>` : ''}<div class="metricas-pl"><div><small>Envíos</small><b>${(p.envios || 0).toLocaleString('es-MX')}</b></div><div><small>Clics</small><b>${(p.clics || 0).toLocaleString('es-MX')}</b></div><div title="Contactos que llegaron a una etapa Ganada dentro de los 15 días siguientes al envío"><small>Ventas</small><b>${(p.ventas || 0).toLocaleString('es-MX')}</b></div></div><small class="nota">Números: ${esc(numerosDeCuenta(p.cuenta).map(n => n.nombre).join(', ') || 'ninguno')}</small><div class="acciones-pl">${p.estado === 'Aprobada' ? btn('Probar plantilla', 'probarPl', '', `data-id="${p.id}"`) : ''}${['Aprobada', 'Rechazada', 'Pausada'].includes(p.estado) ? btn('Editar', 'editarPl', 'enlace', `data-id="${p.id}"`) : ''}${btn('Eliminar', 'borrarPl', 'enlace rojo', `data-id="${p.id}"`)}</div></div>`;
   return pagina('Plantillas de Meta', 'Solo las aprobadas se pueden usar en el chat y en campañas. Cada plantilla es de una cuenta de WhatsApp Business y la comparten todos los números de esa cuenta', sel + busca + btn('+ Crear plantilla', 'nuevaPlantilla', 'primario'),
     (E.numPl ? `<p class="nota">El número ${esc(N(E.numPl).nombre)} es de la cuenta ${esc(cuentaDe(E.numPl).nombre)}; estas son sus plantillas.</p>` : '') + `<p class="nota">${lista.length} ${lista.length === 1 ? 'plantilla' : 'plantillas'}. Ventas: contactos que llegaron a una etapa Ganada dentro de los 15 días siguientes a recibir la plantilla.</p>` +
     (lista.length ? `<div class="rejilla">${lista.map(tarjeta).join('')}</div>` : '<p class="nota">No hay plantillas que coincidan.</p>'));
@@ -932,13 +956,12 @@ function editarPl(id) {
   const p = DB.plantillas.find(x => x.id === id), H = 3600000, ahoraMs = Date.now(), eds = (p.ediciones || []).filter(t => ahoraMs - t < 30 * 24 * H);
   if (p.estado === 'Aprobada' && eds.some(t => ahoraMs - t < 24 * H)) return aviso('Meta deja editar una plantilla aprobada una vez cada 24 horas');
   if (p.estado === 'Aprobada' && eds.length >= 10) return aviso('Meta deja editar una plantilla aprobada hasta 10 veces en 30 días');
-  E.editPl = id;
+  E.editPl = id; subidasPl = {};
   modalPlantilla(p.tipo || ({ 'Carrusel': 'carrusel', 'Oferta por tiempo limitado': 'oferta', 'Código de cupón': 'cupon', 'Autenticación': 'auth' }[p.formato] || 'estandar'), p.nombre);
   const f = $('#formPl'), pon = (n, v) => { if (f.elements[n] && v != null && v !== '') f.elements[n].value = v; };
   $('#modal h2') && ($('#modal h2').textContent = 'Editar plantilla · ' + p.nombre);
   pon('cuerpo', p.cuerpo); pon('pie', p.pie); pon('encTexto', p.encabezado); pon('oferta', p.oferta); pon('codigo', p.codigo);
   if (p.encTipo && f.elements.encTipo) pon('encTipo', p.encTipo); if (p.encTipo && f.elements.medio) pon('medio', p.encTipo);
-  if (p.fmtVars === 'Con nombre' || varsDe(p.cuerpo).some(k => isNaN(k))) pon('fmtVars', 'Con nombre: {{nombre}}, {{pedido}}…');
   pon('rapidas', (p.botones || []).filter(b => !/^[↗✆⧉]/.test(b) && b !== 'Darme de baja').join('\n'));
   (p.botones || []).filter(b => b.startsWith('↗ ')).slice(0, 2).forEach((b, i) => pon('urlTxt' + i, b.slice(2)));
   if (p.tarjetas && f.elements.nTarjetas) { pon('nTarjetas', String(p.tarjetas.length)); p.tarjetas.forEach((t, i) => { pon('tTexto' + i, t.texto); (t.botones || []).forEach((b, j) => pon('tB' + (j + 1) + '_' + i, b.replace(/^[↗✆] /, ''))); }); }
@@ -951,9 +974,9 @@ function editarPl(id) {
 }
 function borrarPl(id) {
   const p = DB.plantillas.find(x => x.id === id), usada = DB.campanas.find(k => k.plantilla === p.nombre && k.estado === 'Programada');
-  if (usada) return aviso(`No se puede borrar: la campaña programada "${usada.nombre}" la usa. Cancélala o cámbiale la plantilla primero.`);
-  abrirModal('Borrar plantilla · ' + esc(p.nombre), `<p>Se borra en Meta, en todos sus idiomas, y deja de aparecer en el chat y en campañas.</p><p class="nota">Meta no deja volver a usar el nombre <b>${esc(p.nombre)}</b> durante 30 días. Lo ya enviado y sus reportes se conservan.</p>`,
-    btn('Cancelar', 'cerrarModal') + btn('Borrar plantilla', 'confirmarBorrarPl', 'primario rojo-btn', `data-id="${p.id}"`));
+  if (usada) return aviso(`No se puede eliminar: la campaña programada "${usada.nombre}" la usa. Cancélala o cámbiale la plantilla primero.`);
+  abrirModal('Eliminar plantilla · ' + esc(p.nombre), `<p>Se elimina en Meta, en todos sus idiomas, y deja de aparecer en el chat y en campañas.</p><p class="nota">Meta no deja volver a usar el nombre <b>${esc(p.nombre)}</b> durante 30 días. Lo ya enviado y sus reportes se conservan.</p>`,
+    btn('Cancelar', 'cerrarModal') + btn('Eliminar plantilla', 'confirmarBorrarPl', 'primario rojo-btn', `data-id="${p.id}"`));
 }
 // Respuestas rápidas por número: cada una es para "Todos los números" o "Solo el número…", igual que los mensajes automáticos.
 const rapidasDe = num => DB.respuestas.filter(r => !r.numero || !num || r.numero === num);
@@ -965,7 +988,7 @@ function vRespuestas() {
   const paginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA_RAP)), pag = Math.min(E.pagRap || 1, paginas), vista = lista.slice((pag - 1) * POR_PAGINA_RAP, pag * POR_PAGINA_RAP);
   const busca = `<input id="buscaRap" class="buscador" placeholder="Buscar por título o texto" value="${esc(E.buscaRap || '')}">`;
   const nav = paginas > 1 ? `<div class="paginado">${btn('‹ Anterior', 'pagRap', '', `data-p="${pag - 1}" ${pag === 1 ? 'disabled' : ''}`)}<span>Página ${pag} de ${paginas}</span>${btn('Siguiente ›', 'pagRap', '', `data-p="${pag + 1}" ${pag === paginas ? 'disabled' : ''}`)}</div>` : '';
-  const tarjeta = r => `<div class="carta"><div class="c-top"><strong>${esc(r.titulo)}</strong>${chip(numeroTxt(r.numero), r.numero ? 'azul' : 'gris')}</div><p class="recorte">${esc(r.texto)}</p>${r.archivo ? `<small>${ico('plant')} ${esc(r.archivo)}</small>` : ''}<div class="acciones-pl">${btn('Editar', 'editarRespuesta', '', 'data-id="' + r.id + '"')}${btn('Eliminar', 'eliminarRespuesta', 'enlace rojo', 'data-id="' + r.id + '"')}</div></div>`;
+  const tarjeta = r => `<div class="carta"><div class="c-top"><strong>${esc(r.titulo)}</strong>${chip(numeroTxt(r.numero), r.numero ? 'azul' : 'gris')}</div><p class="recorte">${esc(r.texto)}</p>${r.archivo ? `<small>${ico('plant')} ${esc(r.archivo)}</small>` : ''}<div class="acciones-pl">${btn('Editar', 'editarRespuesta', 'enlace', 'data-id="' + r.id + '"')}${btn('Eliminar', 'eliminarRespuesta', 'enlace rojo', 'data-id="' + r.id + '"')}</div></div>`;
   return pagina('Respuestas rápidas', 'Mensajes guardados para usar desde el chat. En cada chat solo aparecen las de su número y las de todos los números', sel + busca + btn('+ Nueva respuesta', 'nuevaRespuesta', 'primario'),
     `<p class="nota">${lista.length} ${lista.length === 1 ? 'respuesta' : 'respuestas'}${q ? ' que coinciden con la búsqueda' : ''}${paginas > 1 ? ` · mostrando ${(pag - 1) * POR_PAGINA_RAP + 1} a ${(pag - 1) * POR_PAGINA_RAP + vista.length}` : ''}</p>` +
     (vista.length ? `<div class="rejilla">${vista.map(tarjeta).join('')}</div>` + nav : '<p class="nota">No hay respuestas rápidas que coincidan.</p>'));
@@ -1035,7 +1058,7 @@ function cartaTipos() {
 }
 function vTags() {
   return pagina('Tags y embudos', 'Un tag es una etiqueta que el contacto carga; una etapa es el paso en el que va dentro de un embudo', btn('+ Grupo de tags', 'nuevoGrupo') + btn('+ Nuevo embudo', 'nuevoEmbudo', 'primario'), `<div class="rejilla dos">
-    <div class="carta"><h3>Grupos de tags</h3>${DB.gruposTags.map(g => `<div class="f-grupo"><h4>${esc(g.nombre)} ${btn('+ Tag', 'nuevoTag', 'enlace', `data-id="${g.id}"`)}</h4><div class="tags">${g.tags.map(t => `<span class="tag" style="--c:${t.c}">${esc(t.n)}</span>`).join('')}</div></div>`).join('')}</div>
+    <div class="carta"><h3>Grupos de tags</h3>${DB.gruposTags.map(g => `<div class="f-grupo"><h4>${esc(g.nombre)} ${btn('+ Tag', 'nuevoTag', 'enlace', `data-id="${g.id}"`)}</h4><div class="tags">${g.tags.map(t => `<span class="tag-fila ${t.inactivo ? 'fila-inactiva' : ''}"><a class="tag" style="--c:${t.c}" data-accion="editarTag" data-id="${t.id}" title="Editar tag">${esc(t.n)}</a>${swEstado('tagActivo', `data-id="${t.id}"`, !t.inactivo)}</span>`).join('')}</div></div>`).join('')}<p class="nota">El interruptor activa o desactiva el tag sin entrar a editarlo. Un tag inactivo ya no se puede poner; los contactos que lo tienen lo conservan.</p></div>
     <div class="carta"><h3>Embudos y sus etapas</h3><p class="nota">El interruptor activa o desactiva el embudo sin entrar a editarlo.</p>${DB.embudos.map(b => `<div class="f-grupo"><h4 class="emb-cab"><span>${esc(b.n)} ${chip({ general: 'General', tickets: 'Tickets', campana: 'Campaña' }[b.tipo], 'gris')}${b.inactivo ? ' ' + chip('Inactivo', 'rojo') : ''}</span><span>${swEstado('embudoActivo', `data-id="${b.id}"`, !b.inactivo)}${btn('Editar', 'editarEmbudo', 'enlace', `data-id="${b.id}"`)}${btn('Etapas', 'abrirEtapas', 'enlace', `data-id="${b.id}"`)}</span></h4><div class="tags">${b.etapas.map(e => `<span class="mini ${e.inactivo ? 'inactiva' : ''}" style="--c:${e.c}">${esc(e.n)}${e.tipo === 'ganada' ? ' ✓' : e.tipo === 'perdida' ? ' ✕' : ''}${e.inactivo ? ' · inactiva' : ''}</span>`).join('')}</div>${b.tipo === 'general' ? `<small class="nota">${esc(filtroTxt(b))}</small>` : b.tipo === 'campana' ? `<small class="nota">Palabras clave: ${(b.claves || []).length ? esc(b.claves.join(', ')) : 'ninguna'}</small>` : ''}</div>`).join('')}<p class="nota">✓ resultado Ganada · ✕ resultado Perdida · sin marca, En proceso. Los embudos de campaña se crean solos y se archivan al terminar la campaña.</p></div>${cartaTipos()}</div>`);
 }
 function vBajas() { return pagina('Bajas', 'Lista de supresión: ninguna campaña puede enviar a estos teléfonos', btn('Exportar CSV', 'exportar') + btn('+ Baja manual', 'nuevaBaja', 'primario'), tabla(['Teléfono', 'Contacto', 'Fecha', 'Origen', 'Campaña', ''], DB.bajas.map((b, i) => ({ c: [b.tel, esc(b.contacto), b.fecha, chip(b.origen, 'gris'), esc(b.campana), puede('A') ? btn('Quitar baja', 'quitarBaja', 'enlace rojo', `data-i="${i}"`) : ''] }))) + `<p class="nota">Palabras de baja: BAJA, STOP. Toda plantilla de marketing lleva botón de baja.</p>`); }
@@ -1050,10 +1073,11 @@ const iniEmpresa = () => (DB.empresa.nombre || 'E').split(/\s+/).filter(x => x.l
 const logoMenu = () => E.rol !== 'P' && DB.empresa.icono ? `<span class="logo con-img"><img src="${DB.empresa.icono}" alt=""></span>` : `<span class="logo">${E.rol === 'P' ? 'E' : esc(iniEmpresa())}</span>`;
 function vEmpresa() {
   const e = DB.empresa, v = k => esc((E.empTmp || e)[k] || '');
-  const img = (k, et, medida, ancho) => `<div class="campo"><span>${et}</span><small class="tipo-p">${medida}</small><div class="img-emp"><div class="img-prev ${ancho ? 'ancho' : ''}">${e[k] ? `<img src="${e[k]}" alt="">` : `<b>${esc(iniEmpresa())}</b>`}</div><label class="btn">Elegir imagen<input type="file" accept="image/png,image/jpeg,image/svg+xml" data-img="${k}" hidden></label>${e[k] ? btn('Quitar', 'quitarImg', 'enlace rojo', `data-k="${k}"`) : ''}</div></div>`;
+  // Logo e ícono: cada uno en su línea; a la izquierda el nombre, la ayuda y los botones, y a la derecha la imagen.
+  const img = (k, et, medida, ancho) => `<div class="fila-img"><div class="fila-img-datos"><span class="et-img">${et}</span><small class="tipo-p">${medida}</small><div class="img-emp"><label class="btn">Elegir imagen<input type="file" accept="image/png,image/jpeg,image/svg+xml" data-img="${k}" hidden></label>${e[k] ? btn('Quitar', 'quitarImg', 'enlace rojo', `data-k="${k}"`) : ''}</div></div><div class="img-prev ${ancho ? 'ancho' : ''}">${e[k] ? `<img src="${e[k]}" alt="">` : `<b>${esc(iniEmpresa())}</b>`}</div></div>`;
   return pagina('Empresa', 'Datos de la empresa que usa el CRM. Solo el administrador los cambia.', btn('Guardar cambios', 'guardarEmpresa', 'primario'), `<form id="formEmp" class="rejilla dos">
     <div class="carta"><h3>Datos de la empresa</h3>
-      <div class="dos-campos">${img('logo', 'Logo', 'PNG, JPG o SVG, horizontal, de 512 × 128 px o más; hasta 2 MB', true)}${img('icono', 'Ícono cuadrado', 'PNG o JPG de 512 × 512 px; hasta 2 MB. Se ve en la barra lateral', false)}</div>
+      <div class="imgs-emp">${img('logo', 'Logo', 'PNG, JPG o SVG, horizontal, de 512 × 128 px o más; hasta 2 MB', true)}${img('icono', 'Ícono cuadrado', 'PNG o JPG de 512 × 512 px; hasta 2 MB. Se ve en la barra lateral', false)}</div>
       <label class="campo"><span>Nombre comercial *</span><input name="nombre" value="${v('nombre')}" maxlength="200"></label>
       <label class="campo"><span>Razón social o nombre legal</span><input name="razon" value="${v('razon')}" maxlength="250"></label>
       <div class="dos-campos"><label class="campo"><span>Teléfono</span><input name="tel" value="${v('tel')}" placeholder="+52 81 5550 0100" maxlength="20"></label><label class="campo"><span>Correo</span><input name="correo" type="email" value="${v('correo')}" placeholder="contacto@empresa.com"></label></div>
@@ -1068,6 +1092,11 @@ function vEmpresa() {
       <label class="campo"><span>¿Qué vende?</span><textarea name="vende" rows="3" maxlength="1000" placeholder="Velas, difusores, aceites esenciales y kits de regalo.">${v('vende')}</textarea></label>
       <label class="campo"><span>¿Qué no vende?</span><textarea name="noVende" rows="3" maxlength="1000" placeholder="No vendemos perfumes corporales ni hacemos envíos fuera de México.">${v('noVende')}</textarea></label>
     </div>
+    <div class="carta"><h3>Límite de envíos de plantillas</h3>
+      <p class="nota">Cuántas plantillas puede mandar la empresa desde la bandeja. Solo cuenta las que un usuario envía desde el chat; no cuenta campañas ni mensajes automáticos.</p>
+      <label class="campo"><span>Límite</span><select name="limTipo">${['Sin límite', 'Limitado en total'].map(o => `<option ${((E.empTmp || e).limTipo || 'Sin límite') === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>
+      ${siHtml(`<div class="dos-campos"><label class="campo"><span>Periodo</span><select name="limPeriodo">${['Diario', 'Semanal', 'Mensual'].map(o => `<option ${((E.empTmp || e).limPeriodo || 'Diario') === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label><label class="campo"><span>Cantidad (al menos 1)</span><input name="limCant" type="number" min="1" value="${v('limCant') || 100}"></label></div><p class="nota">Usadas en este periodo: <b>${e.limUsadas || 0}</b>${e.limTipo === 'Limitado en total' ? ' de ' + e.limCant : ''}. Al llegar al límite la bandeja avisa y no deja enviar más plantillas hasta el siguiente periodo.</p>`, 'limTipo', 'Limitado')}
+    </div>
     <div class="carta"><h3>Datos de facturación</h3>
       <p class="nota">Datos del SAT para la factura del servicio del CRM a esta empresa.</p>
       <label class="campo"><span>Razón social (como aparece en la constancia fiscal)</span><input name="fRazon" value="${v('fRazon')}" maxlength="300" placeholder="AROMAS DEL NORTE"></label>
@@ -1078,6 +1107,17 @@ function vEmpresa() {
       <p class="nota">RFC de 12 caracteres para persona moral o 13 para persona física. El régimen debe corresponder al tipo de RFC.</p>
     </div></form>`);
 }
+// Marca automática del permiso: el cliente responde que sí (o toca un botón que empieza con "Sí") a la última plantilla que se le envió.
+function permisoAutomatico(v, texto) {
+  const c = v.contacto && C(v.contacto); if (!c || c.consent !== 'sin') return;
+  const prev = v.msgs.slice(0, -1).reverse().find(m => m.de !== 's'); if (!prev || prev.tipo !== 'plantilla') return;
+  const t = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  if (!/^(si|sip|claro|acepto|de acuerdo|ok|si,|si\b)/.test(t)) return;
+  c.consent = 'otorgado'; c.permiso = { fecha: fCorta(new Date()), origen: 'respondió que sí a una plantilla' };
+  v.msgs.push({ de: 's', t: 'Se registró que ' + c.nombre + ' acepta campañas porque respondió que sí a la plantilla', h: ahora() });
+}
+// Límite de plantillas enviadas desde la bandeja (no cuenta campañas ni automáticos).
+const limiteAlcanzado = () => DB.empresa.limTipo === 'Limitado en total' && (DB.empresa.limUsadas || 0) >= DB.empresa.limCant;
 // Catálogos del SAT más usados para la facturación (clave y nombre).
 const REGIMENES = [['601', 'General de Ley Personas Morales', 'M'], ['603', 'Personas Morales con Fines no Lucrativos', 'M'], ['605', 'Sueldos y Salarios', 'F'], ['606', 'Arrendamiento', 'F'], ['612', 'Personas Físicas con Actividades Empresariales y Profesionales', 'F'], ['616', 'Sin obligaciones fiscales', 'F'], ['621', 'Incorporación Fiscal', 'F'], ['625', 'Actividades Empresariales con ingresos a través de Plataformas Tecnológicas', 'F'], ['626', 'Régimen Simplificado de Confianza', 'A']];
 const USOS_CFDI = [['G01', 'Adquisición de mercancías'], ['G03', 'Gastos en general'], ['I04', 'Equipo de cómputo y accesorios'], ['I08', 'Otra maquinaria y equipo'], ['S01', 'Sin efectos fiscales'], ['CP01', 'Pagos']];
@@ -1115,6 +1155,7 @@ function render() {
   const cuerpo = E.movil && !it.movil ? `<div class="vacio alto">${ico('tel')}<h3>${it.n}</h3><p>Esta sección se usa desde una computadora.</p></div>` : VISTAS[E.ruta]();
   app.innerHTML = `<div class="shell">${menu()}<main class="contenido">${cuerpo}</main>${navMovil()}</div>`;
   const m = $('#msgs'); if (m) m.scrollTop = m.scrollHeight;
+  if ($('#formEmp')) aplicarSi();
 }
 
 /* ---------- Acciones ---------- */
@@ -1141,12 +1182,13 @@ const A = {
   adjDoc: () => { cerrarModal(); enviarMsg({ tipo: 'doc', t: 'Lista-de-precios.pdf' }); },
   rapidas: () => abrirModal('Respuestas rápidas · ' + (CONV() ? N(CONV().numero).nombre : 'todos los números'), `<div class="opciones">${rapidasDe(CONV() && CONV().numero).map(r => `<a data-accion="usarRapida" data-id="${r.id}"><strong>${esc(r.titulo)}</strong><small>${esc(r.texto)}</small></a>`).join('')}</div>`),
   usarRapida: d => { const r = DB.respuestas.find(x => x.id === d.id); cerrarModal(); const t = $('#texto'); if (t) { t.value = r.texto; t.focus(); } },
-  plantilla: () => abrirModal('Enviar plantilla', `<p class="nota">Solo aparecen las plantillas aprobadas por Meta de la cuenta del número ${esc(N(CONV().numero).nombre)}. Con la ventana cerrada es la única forma de escribirle al cliente.</p><div class="opciones">${plantillasDe(CONV().numero).filter(p => p.estado === 'Aprobada').map(p => `<a data-accion="usarPlantilla" data-id="${p.id}"><strong>${p.nombre}</strong> ${chip(p.cat, 'azul')}<small>${esc(p.cuerpo)}</small></a>`).join('')}</div>`),
+  plantilla: () => limiteAlcanzado() ? aviso(`Se alcanzó el límite de ${DB.empresa.limCant} plantillas ${{ Diario: 'por día', Semanal: 'por semana', Mensual: 'por mes' }[DB.empresa.limPeriodo]} desde la bandeja. Lo cambia el administrador en Empresa.`) : abrirModal('Enviar plantilla', `<p class="nota">Solo aparecen las plantillas aprobadas por Meta de la cuenta del número ${esc(N(CONV().numero).nombre)}. Con la ventana cerrada es la única forma de escribirle al cliente.</p><div class="opciones">${plantillasDe(CONV().numero).filter(p => p.estado === 'Aprobada').map(p => `<a data-accion="usarPlantilla" data-id="${p.id}"><strong>${p.nombre}</strong> ${chip(p.cat, 'azul')}<small>${esc(p.cuerpo)}</small></a>`).join('')}</div>`),
   usarPlantilla: d => modalEnviarPl(d.id),
   probarPl: d => modalEnviarPl(d.id, true),
+  usarNombreVar: d => { const i = $('#formEnv [name=' + d.campo + ']'); if (!i) return; i.value = d.v; i.dispatchEvent(new Event('input', { bubbles: true })); },
   enviarPrueba: () => { const r = datosEnv(), num = N($('#formEnv [name=salida]').value), dest = $('#formEnv [name=destino]').value; if (!destinoValido(dest)) return aviso('Escribe el número de destino en formato internacional: + código de país y número'); if (!r.completo) return aviso('Faltan datos de la plantilla'); cerrarModal(); aviso(`Prueba simulada: ${plEnvio.nombre} desde ${num.nombre} a ${dest}. En el prototipo no se envía nada.`); },
-  enviarPl: () => { const r = datosEnv(); if (!r.completo) return aviso('Faltan datos de la plantilla'); const p = r.p, v = CONV(); cerrarModal(); enviarMsg({ tipo: 'plantilla', t: p.cuerpo, botones: p.botones, enc: p.encabezado, medio: p.tarjetas ? '' : r.medio, oferta: p.oferta ? p.oferta + (r.vence ? ' · vence ' + r.vence : '') : '', nTarjetas: p.tarjetas ? p.tarjetas.length : 0, params: r.valores }); aviso(v.gratis > 0 ? 'Plantilla enviada sin costo: el chat entró por anuncio' : `Plantilla de ${p.cat} enviada: se suma al contador de costo`); },
-  simular: () => formModal('Simular mensaje del cliente', [{ id: 't', et: 'Lo que escribe el cliente', tipo: 'area', valor: 'Hola, ¿me pasas el precio del catálogo?' }, { tipo: 'nota', et: 'Palabras clave de los embudos: ' + (DB.embudos.filter(b => (b.claves || []).length).map(b => esc(b.n) + ' (' + esc(b.claves.join(', ')) + ')').join('; ') || 'ninguna') + '. Si el mensaje contiene una, el contacto entra solo a ese embudo.' }], f => { const v = CONV(), texto = (f.t || '').trim() || 'Hola'; v.msgs.push({ de: 'c', autor: v.grupo ? 'Mariana Solís' : '', t: texto, h: ahora() }); if (v.estado !== 'abierta') { v.estado = 'abierta'; v.msgs.push({ de: 's', t: 'La conversación se reabrió porque el cliente escribió', h: ahora() }); } const entro = aplicarClaves(v, texto); v.ventana = 1440; v.espera = '1 min'; v.hora = ahora(); render(); aviso(entro.length ? 'Entró solo a: ' + entro.join(', ') : 'Llegó un mensaje: la ventana de 24 h se reinicia'); }, 'Recibir mensaje'),
+  enviarPl: () => { const r = datosEnv(); if (!r.completo) return aviso('Faltan datos de la plantilla'); if (limiteAlcanzado()) return aviso('Se alcanzó el límite de plantillas desde la bandeja'); DB.empresa.limUsadas = (DB.empresa.limUsadas || 0) + 1; const p = r.p, v = CONV(); cerrarModal(); enviarMsg({ tipo: 'plantilla', t: p.cuerpo, botones: p.botones, enc: p.encabezado, medio: p.tarjetas ? '' : r.medio, oferta: p.oferta ? p.oferta + (r.vence ? ' · vence ' + r.vence : '') : '', nTarjetas: p.tarjetas ? p.tarjetas.length : 0, params: r.valores }); aviso(v.gratis > 0 ? 'Plantilla enviada sin costo: el chat entró por anuncio' : `Plantilla de ${p.cat} enviada: se suma al contador de costo`); },
+  simular: () => formModal('Simular mensaje del cliente', [{ id: 't', et: 'Lo que escribe el cliente', tipo: 'area', valor: 'Hola, ¿me pasas el precio del catálogo?' }, { tipo: 'nota', et: 'Palabras clave de los embudos: ' + (DB.embudos.filter(b => (b.claves || []).length).map(b => esc(b.n) + ' (' + esc(b.claves.join(', ')) + ')').join('; ') || 'ninguna') + '. Si el mensaje contiene una, el contacto entra solo a ese embudo.' }], f => { const v = CONV(), texto = (f.t || '').trim() || 'Hola'; v.msgs.push({ de: 'c', autor: v.grupo ? 'Mariana Solís' : '', t: texto, h: ahora() }); if (v.estado !== 'abierta') { v.estado = 'abierta'; v.msgs.push({ de: 's', t: 'La conversación se reabrió porque el cliente escribió', h: ahora() }); } const entro = aplicarClaves(v, texto); permisoAutomatico(v, texto); v.ventana = 1440; v.espera = '1 min'; v.hora = ahora(); render(); aviso(entro.length ? 'Entró solo a: ' + entro.join(', ') : 'Llegó un mensaje: la ventana de 24 h se reinicia'); }, 'Recibir mensaje'),
   asignar: () => abrirModal('Asignar conversación', `<div class="opciones">${activos().filter(u => u.numeros.includes(CONV().numero)).filter(u => puede('AS') || u.id === E.usuario).map(u => `<a data-accion="asignarA" data-id="${u.id}"><strong><span class="avatar chico">${u.ini}</span> ${esc(u.nombre)}${u.id === E.usuario ? ' (yo)' : ''}</strong><small><i class="punto ${u.disp ? 'ok' : ''}"></i>${u.disp ? 'Disponible' : 'No disponible'} · ${DB.conversaciones.filter(v => v.resp === u.id && v.estado === 'abierta').length} conversaciones abiertas</small></a>`).join('')}</div>${puede('AS') ? '' : '<p class="nota">Como agente solo puedes tomar la conversación para ti.</p>'}`),
   desactivarUsuario: d => {
     const u = U(d.id), p = pendientesDe(u.id), otros = activos().filter(x => x.id !== u.id);
@@ -1168,11 +1210,13 @@ const A = {
   asignarA: d => { const v = CONV(); v.resp = d.id; v.msgs.push({ de: 's', t: `${U(E.usuario).nombre} asignó la conversación a ${U(d.id).nombre}`, h: ahora() }); cerrarModal(); render(); aviso(`Asignada a ${U(d.id).nombre}`); },
   finalizar: () => { const v = CONV(); if (ticketsAbiertosDe(v) && !confirm('Esta conversación tiene tickets abiertos. ¿Cerrarla de todos modos?')) return; v.estado = 'cerrada'; v.espera = ''; v.msgs.push({ de: 's', t: `${U(E.usuario).nombre} cerró la conversación`, h: ahora() }); E.pest = 'cerradas'; render(); aviso('Conversación cerrada'); },
   reabrir: () => { const v = CONV(); v.estado = 'abierta'; v.msgs.push({ de: 's', t: `${U(E.usuario).nombre} reabrió la conversación`, h: ahora() }); E.pest = 'todas'; render(); },
-  tagModal: () => abrirModal('Agregar tag', DB.gruposTags.map(g => `<div class="f-grupo"><h4>${esc(g.nombre)}</h4><div class="tags">${g.tags.map(t => `<a class="tag" style="--c:${t.c}" data-accion="ponerTag" data-id="${t.id}">${esc(t.n)}</a>`).join('')}</div></div>`).join('')),
+  tagModal: () => abrirModal('Agregar tag', DB.gruposTags.map(g => `<div class="f-grupo"><h4>${esc(g.nombre)}</h4><div class="tags">${g.tags.filter(t => !t.inactivo).map(t => `<a class="tag" style="--c:${t.c}" data-accion="ponerTag" data-id="${t.id}">${esc(t.n)}</a>`).join('')}</div></div>`).join('')),
   ponerTag: d => { const v = CONV(); if (!v.tags.includes(d.id)) v.tags.push(d.id); cerrarModal(); render(); },
   quitarTag: d => { const v = CONV(), c = C(v.contacto); v.tags = v.tags.filter(t => t !== d.id); c.tags = c.tags.filter(t => t !== d.id); render(); },
   notaModal: () => formModal('Nota interna', [{ id: 't', et: 'Nota (no se envía al cliente)', tipo: 'area' }], v => { if (v.t) C(CONV().contacto).notas.push({ t: v.t, por: E.usuario, f: 'hoy' }); render(); }),
   ticketModal: () => formModal('Levantar ticket', [{ id: 'm', et: 'Motivo', tipo: 'select', ops: DB.motivos }, { id: 'd', et: 'Descripción', tipo: 'area' }, { id: 'a', et: 'Asignar a', tipo: 'select', ops: activos().map(u => u.nombre) }], f => { const v = CONV(), u = DB.usuarios.find(x => x.nombre === f.a); DB.tickets.unshift({ id: Math.max(...DB.tickets.map(k => k.id)) + 1, conv: v.id, contacto: v.contacto, motivo: f.m, estado: 'Abierto', etapa: 'q1', dias: 0, por: E.usuario, asignado: u.id, creado: 'hoy ' + ahora(), desc: f.d || 'Sin descripción', comentarios: [] }); v.msgs.push({ de: 's', t: `${U(E.usuario).nombre} levantó un ticket: ${f.m}`, h: ahora() }); render(); aviso(`Ticket asignado a ${u.nombre}`); }, 'Levantar ticket'),
+  registrarPermiso: () => { const c = C(CONV().contacto); formModal('Registrar que acepta campañas', [{ id: 'o', et: 'Cómo lo aceptó', tipo: 'select', ops: ['Lo dijo en el chat', 'Lo dijo por teléfono', 'Lo firmó en un formulario', 'Otro'] }, { id: 'n', et: 'Nota (opcional)' }, { tipo: 'nota', et: 'Es solo un registro: no cambia a quién le llegan las campañas. Le llegan a todos menos a quien se dio de baja.' }], f => { c.consent = 'otorgado'; c.permiso = { fecha: fCorta(new Date()), origen: f.o.toLowerCase() + ' (registró ' + U(E.usuario).nombre + ')' + (f.n ? ': ' + f.n : '') }; render(); aviso('Quedó registrado que ' + c.nombre + ' acepta campañas'); }, 'Registrar'); },
+  quitarPermiso: () => { const c = C(CONV().contacto); c.consent = 'sin'; delete c.permiso; render(); aviso('Se quitó el registro; las campañas le siguen llegando mientras no se dé de baja'); },
   baja: () => { const c = C(CONV().contacto); if (!confirm(`¿Dar de baja a ${c.nombre}? Ya no recibirá campañas. Podrás seguir atendiéndolo cuando escriba.`)) return; c.consent = 'baja'; DB.bajas.unshift({ tel: c.tel, contacto: c.nombre, fecha: new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }), origen: 'Manual', campana: '—' }); render(); aviso('Agregado a la lista de supresión'); },
   verTicket: d => verTicket(d.id),
   comentarTicket: d => { const k = DB.tickets.find(x => x.id === +d.id), t = $('#comTicket').value.trim(); if (!t) return; k.comentarios.push({ por: E.usuario, t, f: 'hoy ' + ahora() }); if (k.estado === 'Abierto') { k.estado = 'En proceso'; k.etapa = 'q2'; } E.pestTickets = k.estado; render(); verTicket(k.id); },
@@ -1183,7 +1227,7 @@ const A = {
   nuevaConv: () => formModal('Nueva conversación', [{ id: 'n', et: 'Nombre' }, { id: 't', et: 'Celular', ph: '10 dígitos' }, { tipo: 'nota', et: 'Como no hay ventana abierta, el primer mensaje debe ser una plantilla aprobada.' }], f => { if (!f.n || !f.t) return aviso('Nombre y celular son obligatorios'); const c = { id: 'c' + Date.now(), nombre: f.n, tel: '+52 ' + f.t, tipo: DB.tiposContacto[0] || '', especial: false, correo: '', consent: 'sin', tags: [], alta: 'hoy', notas: [] }; DB.contactos.push(c); const v = { id: 'v' + Date.now(), numero: E.numero === 'todos' ? 'n1' : E.numero, contacto: c.id, resp: E.usuario, estado: 'abierta', noLeidos: 0, espera: '', ventana: 0, tags: [], campana: null, hora: ahora(), msgs: [{ de: 's', t: 'Conversación creada', h: ahora() }] }; DB.conversaciones.unshift(v); E.conv = v.id; E.panel = 'chat'; E.pest = 'todas'; render(); }, 'Crear'),
   nuevoContacto: () => formModal('Nuevo contacto', [{ id: 'n', et: 'Nombre' }, { id: 't', et: 'Celular' }, { id: 'c', et: 'Correo', tipo: 'email' }, { id: 'tp', et: 'Tipo de contacto', tipo: 'select', ops: [...DB.tiposContacto, 'Sin tipo'] }], f => { if (!f.n || !f.t) return aviso('Nombre y celular son obligatorios'); DB.contactos.push({ id: 'c' + Date.now(), nombre: f.n, tel: '+52 ' + f.t, tipo: f.tp === 'Sin tipo' ? '' : f.tp, especial: f.tp === 'Cliente especial', correo: f.c, consent: 'sin', tags: [], alta: 'hoy', notas: [] }); render(); aviso('Contacto creado'); }),
   fichaContacto: d => { const c = C(d.id); abrirModal(esc(c.nombre), `<div class="d-fila"><span>${c.tel}${c.correo ? ' · ' + esc(c.correo) : ''}</span>${chipTipo(c)}</div><div class="d-fila"><span>Embudos</span><span>${posDe(c).map(p => `<span class="mini" style="--c:${ET(p.e).c}">${esc(TB(p.b).n)}: ${esc(ET(p.e).n)}</span>`).join(' ') || 'En ninguno'}</span></div><div class="d-fila"><span>Monto en embudos</span><strong>$${posDe(c).reduce((s, p) => s + p.m, 0).toLocaleString('es-MX')}</strong></div><div class="d-fila"><span>Permiso para campañas</span>${chip({ otorgado: 'Acepta campañas', baja: 'Se dio de baja', sin: 'Sin permiso registrado' }[c.consent], c.consent === 'baja' ? 'rojo' : c.consent === 'otorgado' ? 'verde' : 'gris')}</div><h5>Notas</h5>${c.notas.map(n => `<div class="d-nota">${esc(n.t)}</div>`).join('') || '<small class="nota">Sin notas</small>'}`, btn('Abrir chat', 'chatDe', 'primario', `data-id="${c.id}"`)); },
-  importar: () => abrirModal('Importar contactos', `<p>Resultado de validar <strong>contactos-octubre.csv</strong> (simulado):</p><div class="resumen"><div class="verde"><small>Nuevos</small><strong>182</strong></div><div><small>Se actualizan</small><strong>41</strong></div><div class="ambar"><small>Duplicados</small><strong>9</strong></div><div class="rojo"><small>Inválidos</small><strong>3</strong></div></div>`, btn('Cancelar', 'cerrarModal') + btn('Importar 223 contactos', 'aviso', 'primario', 'data-t="Importación en proceso: te avisamos al terminar"')),
+  importar: () => abrirModal('Importar contactos', `<p>Resultado de validar <strong>contactos-octubre.csv</strong> (simulado):</p><p class="nota">Columna opcional <b>permiso_campanas</b>: "si" registra que el contacto acepta campañas; vacío lo deja sin permiso registrado. Es solo un registro: las campañas llegan a todos menos a las bajas. 118 filas traen "si".</p><div class="resumen"><div class="verde"><small>Nuevos</small><strong>182</strong></div><div><small>Se actualizan</small><strong>41</strong></div><div class="ambar"><small>Duplicados</small><strong>9</strong></div><div class="rojo"><small>Inválidos</small><strong>3</strong></div></div>`, btn('Cancelar', 'cerrarModal') + btn('Importar 223 contactos', 'aviso', 'primario', 'data-t="Importación en proceso: te avisamos al terminar"')),
   exportar: () => aviso('Se descargaría un archivo CSV con lo filtrado'),
   nuevaCampana, revisarCamp, confirmarCamp,
   descartarCamp: () => { campBorrador = null; cerrarModal(); },
@@ -1198,7 +1242,7 @@ const A = {
   fechasCamp: d => { const k = DB.campanas.find(x => x.id === d.id); formModal('Fechas de ' + esc(k.nombre), camposEntrada(k.inicio, k.fin), f => { const x = fechasEntrada(f); if (!x) return; Object.assign(k, x); refrescaEntradas(); render(); aviso('Fechas guardadas: la campaña queda ' + k.estado.toLowerCase()); }); },
   nuevaLista: () => abrirModal('Nueva lista de difusión', '<label class="campo"><span>Nombre de la lista</span><input id="lstNombre" placeholder="Ej. Clientes de octubre"></label>' + camposCsv(), btn('Cancelar', 'cerrarModal') + btn('Crear lista', 'crearLista', 'primario')),
   crearLista: () => { const n = $('#lstNombre').value.trim(); if (!n) return aviso('Falta el nombre de la lista'); if (!$('#lstCsv').files[0]) return aviso('Falta elegir el archivo CSV'); const l = { id: 'l' + Date.now(), nombre: n, creada: 'hoy', miembros: [] }; cargarCsv(l, () => { DB.listas.push(l); render(); }); },
-  plantillaCsv: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFFnombre,apellido,telefono\nMaría,López,8155501234\n'], { type: 'text/csv;charset=utf-8' })); a.download = 'plantilla-lista-difusion.csv'; a.click(); aviso('Plantilla descargada: nombre, apellido, telefono'); },
+  plantillaCsv: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFFnombre,apellido,telefono,permiso_campanas\nMaría,López,8155501234,si\n'], { type: 'text/csv;charset=utf-8' })); a.download = 'plantilla-lista-difusion.csv'; a.click(); aviso('Plantilla descargada: nombre, apellido, telefono y permiso_campanas (opcional)'); },
   verLista: d => { E.buscaLista = ''; verLista(d.id); },
   masCsvLista: d => { const l = DB.listas.find(x => x.id === d.id); abrirModal('Agregar contactos a ' + esc(l.nombre), camposCsv(), btn('Regresar', 'verLista', '', `data-id="${l.id}"`) + btn('Cargar', 'cargarMasLista', 'primario', `data-id="${l.id}"`)); },
   cargarMasLista: d => cargarCsv(DB.listas.find(x => x.id === d.id), render),
@@ -1209,7 +1253,7 @@ const A = {
   conectar: () => conectar(),
   conectarPaso: d => conectar(d.p),
   conectarFin: d => { if (d.p === 'QR' && !$('#aceptoQR').checked) return aviso('Debes aceptar el riesgo para continuar'); if (DB.numeros.length >= 3) { cerrarModal(); return aviso('Llegaste al máximo de números de tu plan'); } DB.numeros.push({ id: 'n' + Date.now(), nombre: d.p === 'QR' ? 'Número QR' : ($('#nomNum').value || 'Nuevo'), tel: '+52 81 5550 01' + (10 + DB.numeros.length), tipo: d.p, estado: 'Conectado', calidad: d.p === 'QR' ? '—' : 'Alta', limite: d.p === 'QR' ? 'No aplica' : '250 por día', oficial: false }); cerrarModal(); render(); aviso('Número conectado'); },
-  nuevaPlantilla: () => { E.editPl = null; modalPlantilla(); },
+  nuevaPlantilla: () => { E.editPl = null; subidasPl = {}; modalPlantilla(); },
   tipoPl: d => { if (E.editPl) return aviso('Al editar no se puede cambiar el tipo de plantilla'); modalPlantilla(d.t, $('#formPl [name=nombre]').value); },
   guardarPl,
   nuevaRespuesta: () => formRespuesta(null),
@@ -1229,18 +1273,21 @@ const A = {
     if (f.fCp && !/^\d{5}$/.test(f.fCp)) return aviso('El código postal fiscal lleva 5 dígitos');
     if (f.rfc && f.regimen) { const tipo = (REGIMENES.find(x => x[0] === f.regimen) || [])[2], moral = f.rfc.length === 12; if ((tipo === 'M' && !moral) || (tipo === 'F' && moral)) return aviso(`El régimen ${f.regimen} no corresponde a un RFC de persona ${moral ? 'moral' : 'física'}`); }
     if (f.fCorreo && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.fCorreo)) return aviso('El correo de facturación no es válido');
+    if (f.limTipo === 'Limitado en total' && !(+f.limCant >= 1)) return aviso('El límite de envíos debe ser al menos 1');
+    if (f.limCant) f.limCant = +f.limCant;
     Object.assign(DB.empresa, f, { nombre: f.nombre.trim() }); E.empTmp = null; render(); aviso('Datos de la empresa guardados');
   },
   quitarImg: d => { if ($('#formEmp')) E.empTmp = Object.fromEntries(new FormData($('#formEmp'))); DB.empresa[d.k] = ''; render(); },
   borrarPl: d => borrarPl(d.id),
-  confirmarBorrarPl: d => { const x = DB.plantillas.find(y => y.id === d.id); DB.plantillas = DB.plantillas.filter(y => y.id !== d.id); cerrarModal(); render(); aviso('Plantilla ' + x.nombre + ' borrada en Meta'); },
+  confirmarBorrarPl: d => { const x = DB.plantillas.find(y => y.id === d.id); DB.plantillas = DB.plantillas.filter(y => y.id !== d.id); cerrarModal(); render(); aviso('Plantilla ' + x.nombre + ' eliminada en Meta'); },
   nuevoAuto: () => formAuto(null),
   editarAuto: d => formAuto(DB.automaticos.find(a => a.id === d.id)),
   nuevoTipo: () => formModal('Nuevo tipo de contacto', [{ id: 'n', et: 'Nombre' }], f => { const n = (f.n || '').trim(); if (!n) return aviso('Falta el nombre'); if (DB.tiposContacto.some(t => normal(t) === normal(n))) return aviso('Ya existe un tipo con ese nombre'); DB.tiposContacto.push(n); render(); aviso('Tipo agregado'); }),
   renombrarTipo: d => { const viejo = DB.tiposContacto[+d.i]; formModal('Renombrar tipo de contacto', [{ id: 'n', et: 'Nombre', valor: viejo }, { tipo: 'nota', et: usanTipo(viejo) + ' contacto(s) con este tipo pasarán al nombre nuevo.' }], f => { const n = (f.n || '').trim(); if (!n) return aviso('Falta el nombre'); if (DB.tiposContacto.some((t, i) => i !== +d.i && normal(t) === normal(n))) return aviso('Ya existe un tipo con ese nombre'); DB.tiposContacto[+d.i] = n; DB.contactos.forEach(c => { if (c.tipo === viejo) c.tipo = n; }); DB.listas.forEach(l => l.miembros.forEach(m => { if (m.tipo === viejo) m.tipo = n; })); render(); aviso('Tipo renombrado'); }); },
   eliminarTipo: d => { const t = DB.tiposContacto[+d.i], n = usanTipo(t); if (!n) { if (!confirm(`¿Eliminar el tipo "${t}"? Ningún contacto lo usa.`)) return; DB.tiposContacto.splice(+d.i, 1); render(); return aviso('Tipo eliminado'); } formModal('Eliminar tipo "' + esc(t) + '"', [{ id: 'a', et: `Hay ${n} ${n === 1 ? 'contacto' : 'contactos'} con este tipo. ¿A qué tipo ${n === 1 ? 'lo paso' : 'los paso'}?`, tipo: 'select', ops: ['Dejarlos sin tipo', ...DB.tiposContacto.filter(x => x !== t)] }, { tipo: 'nota', et: 'Ningún contacto se borra: solo cambia su tipo.' }], f => { const nuevo = f.a === 'Dejarlos sin tipo' ? '' : f.a; DB.contactos.forEach(c => { if (c.tipo === t) c.tipo = nuevo; }); DB.listas.forEach(l => l.miembros.forEach(m => { if (m.tipo === t) m.tipo = nuevo || 'Sin tipo'; })); DB.tiposContacto.splice(DB.tiposContacto.indexOf(t), 1); render(); aviso(`Tipo eliminado: ${n} ${n === 1 ? 'contacto pasó' : 'contactos pasaron'} a ${nuevo || 'Sin tipo'}`); }, 'Eliminar tipo'); },
   nuevoGrupo: () => formModal('Nuevo grupo de tags', [{ id: 'n', et: 'Nombre' }], f => { DB.gruposTags.push({ id: 'g' + Date.now(), nombre: f.n || 'Grupo', tags: [] }); render(); }),
-  nuevoTag: d => formModal('Nuevo tag', [{ id: 'n', et: 'Nombre' }, { id: 'c', et: 'Color', tipo: 'color', valor: '#0e9f6e' }], f => { DB.gruposTags.find(g => g.id === d.id).tags.push({ id: 't' + Date.now(), n: f.n || 'Tag', c: f.c }); render(); }),
+  nuevoTag: d => formModal('Nuevo tag', [{ id: 'n', et: 'Nombre' }, { id: 'c', et: 'Color', tipo: 'color', valor: '#0e9f6e' }, { id: 'es', et: 'Estado', tipo: 'estado', ops: ['Activo', 'Inactivo'], valor: 'Activo' }], f => { if (!(f.n || '').trim()) return aviso('Falta el nombre del tag'); DB.gruposTags.find(g => g.id === d.id).tags.push({ id: 't' + Date.now(), n: f.n.trim(), c: f.c, inactivo: f.es === 'Inactivo' }); render(); }),
+  editarTag: d => { const t = TAG(d.id); formModal('Editar tag', [{ id: 'n', et: 'Nombre', valor: t.n }, { id: 'c', et: 'Color', tipo: 'color', valor: t.c }, { id: 'es', et: 'Estado', tipo: 'estado', ops: ['Activo', 'Inactivo'], valor: t.inactivo ? 'Inactivo' : 'Activo' }, { tipo: 'nota', et: 'Un tag inactivo ya no se puede poner; los contactos que lo tienen lo conservan y se sigue pudiendo filtrar por él.' }], f => { if (!(f.n || '').trim()) return aviso('Falta el nombre del tag'); Object.assign(t, { n: f.n.trim(), c: f.c, inactivo: f.es === 'Inactivo' }); render(); }, 'Guardar'); },
   nuevaEtapa: () => formModal('Nueva etapa', [{ id: 'n', et: 'Nombre' }, { id: 't', et: 'Resultado', tipo: 'select', ops: ['En proceso', 'Ganada', 'Perdida'] }, { tipo: 'nota', et: 'El resultado le dice a los reportes qué significa llegar a esta etapa: «Ganada» cuenta como venta o conversión, «Perdida» como oportunidad perdida y «En proceso» es un paso intermedio. Son tres valores fijos.' }, { id: 'c', et: 'Color (opcional)', tipo: 'paleta' }, { id: 'es', et: 'Estado', tipo: 'estado', ops: ['Activa', 'Inactiva'], valor: 'Activa' }, { tipo: 'nota', et: 'Una etapa inactiva no aparece en el embudo ni se ofrece para mover contactos.' }], f => { if (!(f.n || '').trim()) return aviso('Falta el nombre de la etapa'); f.t = { 'En proceso': 'abierta', Ganada: 'ganada', Perdida: 'perdida' }[f.t]; const es = TB(E.embudo).etapas, i = es.findIndex(e => e.tipo !== 'abierta'); es.splice(f.t === 'abierta' && i >= 0 ? i : es.length, 0, { id: 'e' + Date.now(), n: f.n.trim(), tipo: f.t, c: f.c || (PALETA.find(p => !es.some(e => e.c === p[0])) || PALETA[0])[0], inactivo: f.es === 'Inactiva' }); render(); aviso('Etapa agregada a ' + TB(E.embudo).n); }),
   selEmbudo: d => { E.embudo = d.id; E.ruta = 'embudo'; cerrarModal(); render(); },
   gestionarEtapas: () => { const b = TB(E.embudo); abrirModal('Etapas de ' + esc(b.n) + (b.inactivo ? ' · inactivo' : ''), b.etapas.map((e, i) => `<div class="d-fila etapa ${e.inactivo ? 'fila-inactiva' : ''}"><span><b>${i + 1}</b> <span class="mini" style="--c:${e.c}">${esc(e.n)}</span>${e.inactivo ? ' ' + chip('Inactiva', 'rojo') : ''}</span><span class="acc-etapa">${chip(e.tipo === 'abierta' ? 'En proceso' : e.tipo === 'ganada' ? 'Ganada' : 'Perdida', e.tipo === 'ganada' ? 'verde' : e.tipo === 'perdida' ? 'gris' : 'azul')}${swEstado('etapaActiva', `data-b="${b.id}" data-id="${e.id}"`, !e.inactivo)}${btn('Editar', 'editarEtapa', 'enlace', `data-id="${e.id}"`)}</span></div>`).join('') + '<p class="nota">A la derecha de cada etapa: su resultado, el interruptor para activarla o desactivarla y Editar. El resultado es lo que usan los reportes para saber qué etapas cuentan como venta.</p>' + (b.tipo === 'general' ? `<h5 style="margin-top:14px">Números que atiende</h5><p>${b.numero ? 'Solo ' + esc(N(b.numero).nombre) + ': sus palabras clave solo cuentan en los chats de ese número.' : 'Todos los números: sus palabras clave cuentan en cualquier chat.'}</p><h5 style="margin-top:14px">Filtro</h5><p>${esc(filtroTxt(b))}</p>${filtroDe(b) !== 'manual' ? `<p class="nota">Quien cumpla el filtro entra solo a la etapa ${esc(primeraActiva(b).n)}.</p>` : ''}` : ''), btn('Cerrar', 'cerrarModal') + btn('Editar embudo', 'editarEmbudo', '', `data-id="${b.id}"`) + btn('+ Etapa', 'nuevaEtapa', 'primario')); },
@@ -1264,6 +1311,7 @@ document.addEventListener('click', ev => {
   const fn = A[el.dataset.accion]; if (fn) { ev.preventDefault(); fn(el.dataset, el); }
 });
 document.addEventListener('change', ev => {
+  if (ev.target.dataset && ev.target.dataset.subir) return subirPl(ev.target);
   if (ev.target.dataset && ev.target.dataset.img) { const a = ev.target.files[0], k = ev.target.dataset.img; if (!a) return; if (a.size > 2 * 1024 * 1024) return aviso('La imagen pesa más de 2 MB'); const lector = new FileReader(); lector.onload = () => { if ($('#formEmp')) E.empTmp = Object.fromEntries(new FormData($('#formEmp'))); DB.empresa[k] = lector.result; render(); aviso((k === 'logo' ? 'Logo' : 'Ícono') + ' cargado; se guarda con "Guardar cambios"'); }; return lector.readAsDataURL(a); }
   const el = ev.target, k = el.dataset.cambio; if (!k) return;
   if (k === 'numero') E.numero = el.value;
@@ -1283,6 +1331,7 @@ document.addEventListener('change', ev => {
   if (k === 'tkDesde') E.tk.desde = el.value;
   if (k === 'tkHasta') E.tk.hasta = el.value;
   if (k === 'usuarioActivo') { const quiere = el.checked; el.checked = !quiere; return quiere ? A.activarUsuario({ id: el.dataset.id }) : A.desactivarUsuario({ id: el.dataset.id }); }
+  if (k === 'tagActivo') { const t = TAG(el.dataset.id); t.inactivo = !el.checked; aviso('Tag ' + t.n + (t.inactivo ? ' desactivado: ya no se puede poner' : ' activado')); }
   if (k === 'embudoActivo') cambiaEmbudo(el.dataset.id, el.checked);
   if (k === 'etapaActiva') { cambiaEtapa(el.dataset.b, el.dataset.id, el.checked); render(); return A.gestionarEtapas(); }
   if (k === 'repNum') E.repNum = el.value;
@@ -1301,7 +1350,7 @@ document.addEventListener('change', ev => {
   render();
 });
 document.addEventListener('input', ev => {
-  if (ev.target.closest('#modal form')) aplicarSi();
+  if (ev.target.closest('#modal form') || ev.target.closest('#formEmp')) aplicarSi();
   if (ev.target.closest('.estado-sw')) { const b = ev.target.closest('.estado-sw').querySelector('b'); b.textContent = ev.target.checked ? b.dataset.on : b.dataset.off; }
   if (ev.target.closest('.bloque-h') && ev.target.type === 'checkbox') { const bl = ev.target.closest('.bloque-h'); bl.classList.toggle('cerrado', !ev.target.checked); bl.querySelector('.estado-h').textContent = ev.target.checked ? '' : 'Cerrado'; }
   if (ev.target.closest('#formGen') && ['r', 'prueba'].includes(ev.target.name)) pruebaRegex();
