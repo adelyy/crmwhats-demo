@@ -108,7 +108,7 @@ const iniciales = n => n.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperC
 
 /* ---------- Iconos ---------- */
 const TRAZOS = {
-  menu: 'M4 6h16M4 12h16M4 18h16', chat: 'M4 5h16v11H9l-5 4z', cols: 'M4 4h5v16H4zM10.5 4h5v11h-5zM17 4h3v7h-3z', users: 'M8 11a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5M17 11a3 3 0 100-6M18 15c2 .5 4 2 4 5',
+  menu: 'M4 6h16M4 12h16M4 18h16', cal: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2', chat: 'M4 5h16v11H9l-5 4z', cols: 'M4 4h5v16H4zM10.5 4h5v11h-5zM17 4h3v7h-3z', users: 'M8 11a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5M17 11a3 3 0 100-6M18 15c2 .5 4 2 4 5',
   ticket: 'M4 7h16v4a2 2 0 000 4v4H4v-4a2 2 0 000-4zM10 7v12', mega: 'M3 10v4l11 5V5zM14 9a3 3 0 010 6M6 15v4h3', lista: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
   chart: 'M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-8', tel: 'M7 3h10v18H7zM11 18h2', plant: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5', rayo: 'M13 3L5 14h6l-1 7 8-11h-6z',
   robot: 'M5 9h14v10H5zM12 9V5M9 14h.01M15 14h.01M3 13v3M21 13v3', tag: 'M3 12V4h8l10 10-8 8zM7.5 8h.01', stop: 'M12 3a9 9 0 100 18 9 9 0 000-18zM6 6l12 12', plan: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z',
@@ -128,6 +128,7 @@ const MENU = [
     { r: 'tickets', n: 'Tickets', i: 'ticket', roles: 'ASG', movil: true },
     { r: 'campanas', n: 'Campañas', i: 'mega', roles: 'AS' },
     { r: 'listas', n: 'Listas de difusión', i: 'lista', roles: 'AS' },
+    { r: 'agenda', n: 'Agenda', i: 'cal', roles: 'ASG', movil: true },
     { r: 'reportes', n: 'Reportes', i: 'chart', roles: 'ASG' }] },
   { sec: 'Configuración', items: [
     { r: 'numeros', n: 'Números', i: 'tel', roles: 'A' },
@@ -159,7 +160,7 @@ function menu() {
   }).join('');
   return `<nav class="menu ${E.menuCol ? 'col' : ''}">
     <div class="marca"><button class="m-col" data-accion="colMenu" title="${E.menuCol ? 'Mostrar el menú completo' : 'Dejar solo los iconos'}" aria-label="Contraer o expandir el menú">${ico('menu')}</button>${logoMenu()}<div><strong>Enlaza CRM</strong><small>${E.rol === 'P' ? 'Plataforma' : esc(DB.empresa.nombre)}</small></div></div>
-    <div class="m-lista">${secciones}</div>
+    <div class="m-lista">${E.rol !== 'P' ? campanaNotif() : ''}${secciones}</div>
     <a class="m-yo" data-accion="ir" data-ruta="perfil" title="${esc(yo.nombre)} · Perfil"><span class="avatar">${yo.ini}</span><div><strong>${esc(yo.nombre)}</strong><small><i class="punto ${yo.disp ? 'ok' : ''}"></i>${yo.disp ? 'Disponible' : 'No disponible'}</small></div></a>
   </nav>`;
 }
@@ -209,6 +210,7 @@ function formModal(titulo, campos, cb, textoBoton = 'Guardar') {
     else if (c.tipo === 'area') ctrl = `<textarea name="${c.id}" rows="3" placeholder="${esc(c.ph || '')}">${esc(c.valor || '')}</textarea>`;
     else if (c.tipo === 'estado') { const on = c.valor === c.ops[0]; return `<div class="campo"><span>${c.et}</span><label class="estado-sw"><input type="hidden" name="${c.id}" value="${c.ops[1]}"><span class="interruptor"><input type="checkbox" name="${c.id}" value="${c.ops[0]}" ${on ? 'checked' : ''}><i></i></span><b data-on="${c.ops[0]}" data-off="${c.ops[1]}">${on ? c.ops[0] : c.ops[1]}</b></label></div>`; }
     else if (c.tipo === 'nota') return `<p class="nota">${c.et}</p>`;
+    else if (c.tipo === 'html') return c.et;
     else ctrl = `<input name="${c.id}" type="${c.tipo || 'text'}" value="${esc(c.valor || '')}" placeholder="${esc(c.ph || '')}">`;
     return `<label class="campo"><span>${c.et}</span>${ctrl}</label>`;
   };
@@ -249,12 +251,116 @@ function convsFiltradas() {
 }
 const numFiltros = () => E.f.tags.length + ['embudo', 'etapa', 'resp', 'campana'].filter(k => E.f[k]).length + (E.f.especial ? 1 : 0);
 
+/* ---------- Indicadores de la bandeja ----------
+   Antes eran siete tarjetas fijas que ocupaban una franja entera. Ahora:
+   - "Anclados": una línea delgada con lo que se atiende (sin responder y tickets) y el día (recibidos, enviados y plantillas).
+   - "Ocultos": solo queda un botón con ícono y la cuenta de sin responder.
+   - El botón despliega el detalle completo (con el costo de plantillas por categoría) sin mover la bandeja.
+   La elección se guarda por usuario en el navegador. */
+const leeGuardado = (k, def) => { try { return localStorage.getItem(k) || def; } catch (e) { return def; } };
+const guardaLocal = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+if (!E.indModo) E.indModo = leeGuardado('crm.indModo', 'anclado');
+function datosInd() {
+  const vis = convsVisibles(), sinResp = vis.filter(sinResponder).length, tickets = DB.tickets.filter(k => estadoTk(k) !== 'Cerrado' && (E.rol !== 'G' || k.asignado === E.usuario)).length;
+  return { sinResp, tickets, recibidos: 238, enviados: 221, cats: [['Marketing', 12, 0.52, 'azul'], ['Utilidad', 185, 1.48, 'verde'], ['Servicio', 0, 0, 'gris']] };
+}
 function indicadores() {
-  const vis = convsVisibles();
-  const tickets = DB.tickets.filter(k => estadoTk(k) !== 'Cerrado').length;
-  const d = [['Recibidos hoy', 238, ''], ['Enviados hoy', 221, ''], ['Sin responder', vis.filter(sinResponder).length, 'rojo'], ['Tickets abiertos', tickets, 'ambar'],
-    ['Marketing', '12 · $0.52', 'azul'], ['Utilidad', '185 · $1.48', 'verde'], ['Servicio', '0 · $0', 'gris']];
-  return `<div class="indicadores">${d.map(x => `<div class="ind ${x[2]}"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join('')}</div>`;
+  const d = datosInd(), plantillas = d.cats.reduce((s, c) => s + c[1], 0), costo = d.cats.reduce((s, c) => s + c[2], 0);
+  const linea = `<div class="ind-linea">
+      <a class="ind-chip rojo" data-accion="pest" data-p="sinresp" title="Ver las que esperan respuesta">Sin responder <b>${d.sinResp}</b></a>
+      <a class="ind-chip ambar" data-accion="pest" data-p="contickets" title="Ver conversaciones con ticket abierto">Tickets abiertos <b>${d.tickets}</b></a>
+      <span class="ind-chip">Recibidos hoy <b>${d.recibidos}</b></span><span class="ind-chip">Enviados hoy <b>${d.enviados}</b></span>
+      <span class="ind-chip">Plantillas hoy <b>${plantillas}</b> · US$${costo.toFixed(2)}</span>
+      <span class="ind-acc">${btn(ico('chart'), 'indDetalle', 'icono-bt', 'title="Ver el detalle"')}${btn('📌', 'indModo', 'icono-bt activo', 'data-v="oculto" title="Desanclar: ocultar la línea de indicadores"')}</span></div>`;
+  const detalle = E.indDetalle ? `<div class="ind-pop"><div class="ind-pop-cab"><b>Indicadores de hoy</b><span>${E.indModo === 'oculto' ? btn('📌 Anclar arriba', 'indModo', 'enlace', 'data-v="anclado"') : btn('Ocultar la línea', 'indModo', 'enlace', 'data-v="oculto"')}${btn('×', 'indDetalle', 'icono-bt', 'title="Cerrar"')}</span></div>
+      <div class="ind-pop-grid"><div class="ind rojo"><small>Sin responder</small><strong>${d.sinResp}</strong></div><div class="ind ambar"><small>Tickets abiertos</small><strong>${d.tickets}</strong></div><div class="ind"><small>Recibidos hoy</small><strong>${d.recibidos}</strong></div><div class="ind"><small>Enviados hoy</small><strong>${d.enviados}</strong></div></div>
+      <small class="nota">Plantillas enviadas hoy, por categoría (son las que cobra Meta):</small>
+      <div class="ind-pop-grid">${d.cats.map(c => `<div class="ind ${c[3]}"><small>${c[0]}</small><strong>${c[1]} · $${c[2].toFixed(2)}</strong></div>`).join('')}</div>
+      ${btn('Ver reportes completos', 'ir', 'enlace', 'data-ruta="reportes"')}</div>` : '';
+  return (E.indModo === 'anclado' ? linea : '') + detalle;
+}
+const botonInd = () => E.indModo === 'oculto' ? `<button class="icono ind-boton ${E.indDetalle ? 'activo' : ''}" data-accion="indDetalle" title="Indicadores de hoy">${ico('chart')}${datosInd().sinResp ? `<b class="punto-num">${datosInd().sinResp}</b>` : ''}</button>` : '';
+
+/* ---------- Agenda: eventos con recordatorio ----------
+   Un evento es algo que el usuario agenda para una fecha y hora: con un cliente (contacto), con una campaña, o una nota.
+   A la hora de su aviso llega un recordatorio a la campana de notificaciones (y, en la app, como notificación push). */
+const TIPOS_EV = ['Cliente', 'Campaña', 'Nota'];
+const AVISOS_EV = [['A la hora del evento', 0], ['10 minutos antes', 10], ['30 minutos antes', 30], ['1 hora antes', 60], ['1 día antes', 1440]];
+const EV = id => DB.eventos.find(x => x.id === id);
+const avisoEn = ev => new Date(ev.pospuesto || (new Date(ev.fecha).getTime() - (ev.aviso || 0) * 60000)).getTime();
+const eventosVisibles = () => DB.eventos.filter(ev => E.rol === 'G' ? ev.para === E.usuario : (E.verEvTodos || ev.para === E.usuario));
+const vinculoEv = ev => ev.tipo === 'Cliente' && ev.contacto ? C(ev.contacto).nombre : ev.tipo === 'Campaña' && ev.campana ? (DB.campanas.find(k => k.id === ev.campana) || {}).nombre || 'Campaña' : '';
+const chipEv = ev => chip(ev.tipo, { Cliente: 'azul', 'Campaña': 'verde', Nota: 'gris' }[ev.tipo]);
+function vAgenda() {
+  const hoy = new Date(), mes = E.mesAg != null ? new Date(E.mesAg) : new Date(hoy.getFullYear(), hoy.getMonth(), 1), dSel = E.diaAg || aLocal(hoy).slice(0, 10);
+  const evs = eventosVisibles(), deDia = f => evs.filter(ev => ev.fecha.slice(0, 10) === f).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const primero = new Date(mes.getFullYear(), mes.getMonth(), 1), inicio = (primero.getDay() + 6) % 7, dias = new Date(mes.getFullYear(), mes.getMonth() + 1, 0).getDate();
+  const celdas = Array.from({ length: inicio }, () => '<div class="ag-dia vacio-d"></div>').concat(Array.from({ length: dias }, (_, i) => { const f = aLocal(new Date(mes.getFullYear(), mes.getMonth(), i + 1)).slice(0, 10), n = deDia(f); return `<button type="button" class="ag-dia ${f === dSel ? 'sel' : ''} ${f === aLocal(hoy).slice(0, 10) ? 'hoy' : ''}" data-accion="diaAg" data-f="${f}"><span>${i + 1}</span>${n.length ? `<i>${n.slice(0, 3).map(ev => `<em class="pt-${ev.tipo === 'Campaña' ? 'camp' : ev.tipo === 'Nota' ? 'nota' : 'cli'} ${ev.estado === 'Hecho' ? 'hecho' : ''}"></em>`).join('')}</i>` : ''}</button>`; })).join('');
+  const fila = ev => `<a class="ag-ev ${ev.estado === 'Hecho' ? 'hecho' : ''}" data-accion="verEvento" data-id="${ev.id}"><b>${ev.fecha.slice(11, 16)}</b><span>${esc(ev.titulo)}<small>${chipEv(ev)} ${esc(vinculoEv(ev))}${ev.para !== E.usuario ? ' · para ' + esc(U(ev.para).nombre) : ''}${ev.estado === 'Hecho' ? ' · hecho' : ''}</small></span></a>`;
+  const proximos = evs.filter(ev => ev.estado !== 'Hecho' && new Date(ev.fecha) >= hoy).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 6);
+  const nomMes = mes.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+  const filtro = puede('AS') ? `<label class="check"><input type="checkbox" data-cambio="verEvTodos" ${E.verEvTodos ? 'checked' : ''}>Ver los de todo el equipo</label>` : '';
+  return pagina('Agenda', 'Eventos con un cliente, con una campaña o notas, con recordatorio a la hora que elijas', filtro + btn('+ Agendar', 'nuevoEvento', 'primario'), `<div class="ag">
+    <div class="carta"><div class="ag-cab">${btn('‹', 'mesAg', 'icono-bt', 'data-d="-1"')}<b>${nomMes[0].toUpperCase() + nomMes.slice(1)}</b>${btn('›', 'mesAg', 'icono-bt', 'data-d="1"')}</div>
+      <div class="ag-sem">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => `<span>${d}</span>`).join('')}</div><div class="ag-grid">${celdas}</div>
+      <small class="nota"><em class="pt-cli"></em> Cliente <em class="pt-camp"></em> Campaña <em class="pt-nota"></em> Nota</small></div>
+    <div><div class="carta"><h3>${new Date(dSel + 'T12:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>${deDia(dSel).map(fila).join('') || '<p class="nota">Sin eventos este día.</p>'}${btn('+ Agendar este día', 'nuevoEvento', 'enlace', `data-f="${dSel}"`)}</div>
+      <div class="carta"><h3>Próximos</h3>${proximos.map(ev => `<div class="ag-prox">${esc(fechaTxt(new Date(ev.fecha)))}</div>${fila(ev)}`).join('') || '<p class="nota">No hay eventos próximos.</p>'}</div></div>
+  </div>`);
+}
+function formEvento(ev, pre) {
+  const x = ev || { tipo: 'Cliente', aviso: 10, para: E.usuario, ...pre }, fechaIni = x.fecha || ((pre && pre.f ? pre.f : aLocal(new Date()).slice(0, 10)) + 'T' + (pre && pre.f ? '10:00' : aLocal(new Date(Date.now() + 3600000)).slice(11, 16)));
+  const contactos = DB.contactos.map(c => c.nombre + ' · ' + c.tel), campanas = DB.campanas.map(k => k.nombre), usuarios = activos().map(u => u.nombre);
+  formModal(ev ? 'Editar evento' : 'Agendar', [
+    { id: 't', et: 'Tipo', tipo: 'select', ops: TIPOS_EV, valor: x.tipo },
+    { tipo: 'html', si: ['t', 'Cliente'], et: `<div class="campo"><span>Cliente *</span><input id="buscaCli" autocomplete="off" placeholder="Escribe el nombre o el número" value="${x.contacto ? esc(C(x.contacto).nombre + ' · ' + C(x.contacto).tel) : ''}"><input type="hidden" name="cid" value="${x.contacto || ''}"><div id="sugCli" class="sug-cli"></div></div>` },
+    { id: 'k', si: ['t', 'Campaña'], et: 'Campaña', tipo: 'select', ops: campanas, valor: x.campana ? (DB.campanas.find(k => k.id === x.campana) || {}).nombre : campanas[0] },
+    { id: 'n', et: 'Título *', valor: x.titulo || '', ph: 'Ej. Llamar para confirmar el pedido' },
+    { id: 'fh', et: 'Fecha y hora *', tipo: 'datetime-local', valor: fechaIni },
+    { id: 'a', et: 'Recordatorio', tipo: 'select', ops: AVISOS_EV.map(a => a[0]), valor: (AVISOS_EV.find(a => a[1] === x.aviso) || AVISOS_EV[1])[0] },
+    ...(puede('AS') ? [{ id: 'p', et: 'Para', tipo: 'select', ops: usuarios, valor: U(x.para).nombre }] : [{ tipo: 'nota', et: 'El evento es para ti; el recordatorio te llega a ti.' }]),
+    { id: 'o', et: 'Nota (opcional)', tipo: 'area', valor: x.nota || '' },
+    { tipo: 'nota', et: 'El recordatorio llega a la campana de notificaciones de quien tenga el evento, y en la app del celular como notificación.' }
+  ], f => {
+    if (!(f.n || '').trim()) return aviso('Falta el título');
+    if (f.t === 'Cliente' && !f.cid) return aviso('Elige el cliente: escribe su nombre o número y tócalo en la lista');
+    const fecha = new Date(f.fh); if (!f.fh || isNaN(fecha)) return aviso('Falta la fecha y hora');
+    if (!ev && fecha < new Date(Date.now() - 60000)) return aviso('La fecha y hora ya pasó');
+    const datos = { tipo: f.t, titulo: f.n.trim(), fecha: f.fh, aviso: AVISOS_EV.find(a => a[0] === f.a)[1], nota: f.o || '', para: puede('AS') ? DB.usuarios.find(u => u.nombre === f.p).id : E.usuario, contacto: f.t === 'Cliente' ? f.cid : null, campana: f.t === 'Campaña' ? DB.campanas.find(k => k.nombre === f.k).id : null, pospuesto: null, notificado: false };
+    if (ev) Object.assign(ev, datos); else DB.eventos.push({ id: 'ev' + Date.now(), estado: 'Pendiente', por: E.usuario, ...datos });
+    E.diaAg = f.fh.slice(0, 10); render(); aviso(ev ? 'Evento guardado' : 'Evento agendado para el ' + fechaTxt(fecha) + (datos.para !== E.usuario ? ' · para ' + U(datos.para).nombre : ''));
+  }, ev ? 'Guardar' : 'Agendar');
+}
+const sinAcentosTxt = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function buscaClientes(q) {
+  const t = sinAcentosTxt(q).trim(), dig = soloDig(q); if (!t) return [];
+  return DB.contactos.filter(c => sinAcentosTxt(c.nombre).includes(t) || (dig.length >= 3 && soloDig(c.tel).includes(dig))).slice(0, 6);
+}
+function pintaSugCli() {
+  const i = $('#buscaCli'), d = $('#sugCli'); if (!i || !d) return;
+  const r = buscaClientes(i.value);
+  d.innerHTML = !i.value.trim() ? '' : r.length ? r.map(c => `<a data-accion="elegirCli" data-id="${c.id}"><b>${esc(c.nombre)}</b><small>${esc(c.tel)}${c.tipo ? ' · ' + esc(c.tipo) : ''}</small></a>`).join('') : '<small class="nota">Ningún contacto coincide. Revisa el nombre o el número; si es nuevo, agrégalo primero en Contactos, o agenda el evento como Nota.</small>';
+}
+function verEvento(id) {
+  const ev = EV(id), irA = ev.tipo === 'Cliente' && ev.contacto ? btn('Abrir chat', 'chatDe', '', `data-id="${ev.contacto}"`) : ev.tipo === 'Campaña' && ev.campana ? btn('Ver campaña', 'verCampanaEv', '', `data-id="${ev.campana}"`) : '';
+  abrirModal(esc(ev.titulo), `<div class="d-fila">${chipEv(ev)}<span>${esc(vinculoEv(ev))}</span>${ev.estado === 'Hecho' ? chip('Hecho', 'verde') : ''}</div><div class="d-fila"><span>Cuándo</span><strong>${esc(fechaTxt(new Date(ev.fecha)))}</strong></div><div class="d-fila"><span>Recordatorio</span><strong>${(AVISOS_EV.find(a => a[1] === ev.aviso) || AVISOS_EV[0])[0]}</strong></div><div class="d-fila"><span>Para</span><strong>${esc(U(ev.para).nombre)}</strong></div>${ev.nota ? `<p>${esc(ev.nota)}</p>` : ''}`,
+    irA + btn('Editar', 'editarEvento', 'enlace', `data-id="${ev.id}"`) + btn('Eliminar', 'eliminarEvento', 'enlace rojo', `data-id="${ev.id}"`) + (ev.estado === 'Hecho' ? btn('Marcar pendiente', 'hechoEvento', '', `data-id="${ev.id}"`) : btn('Marcar como hecho', 'hechoEvento', 'primario', `data-id="${ev.id}"`)));
+}
+/* Notificaciones: llegan a la campana; los recordatorios de eventos se revisan cada pocos segundos. */
+const misNotifs = () => DB.notifs.filter(n => n.para === E.usuario);
+const campanaNotif = () => { const n = misNotifs().filter(x => !x.leida).length; return `<a class="m-item campana-not" data-accion="verNotifs" title="Notificaciones"><i class="ico-not">🔔</i><span>Notificaciones</span>${n ? `<b class="badge-not">${n}</b>` : ''}</a>`; };
+function revisaAvisos() {
+  const ahoraMs = Date.now(); let nuevas = 0;
+  DB.eventos.filter(ev => ev.estado !== 'Hecho' && !ev.notificado && avisoEn(ev) <= ahoraMs).forEach(ev => {
+    ev.notificado = true; nuevas++;
+    DB.notifs.unshift({ id: 'n' + Date.now() + ev.id, para: ev.para, evento: ev.id, t: 'Recordatorio: ' + ev.titulo, sub: (vinculoEv(ev) ? vinculoEv(ev) + ' · ' : '') + fechaTxt(new Date(ev.fecha)), h: ahora(), leida: false });
+    if (ev.para === E.usuario) aviso('🔔 Recordatorio: ' + ev.titulo);
+  });
+  if (nuevas) document.querySelectorAll('.campana-not').forEach(b => { b.outerHTML = campanaNotif(); });
+}
+function verNotifs() {
+  const ns = misNotifs();
+  abrirModal('Notificaciones', ns.length ? ns.map(n => { const ev = n.evento && EV(n.evento); return `<div class="notif ${n.leida ? '' : 'nueva'}"><div><b>${esc(n.t)}</b><small>${esc(n.sub || '')} · llegó a las ${n.h}</small></div><span>${ev ? btn('Abrir', 'abrirNotif', 'enlace', `data-id="${n.id}"`) + (ev.estado !== 'Hecho' ? btn('Posponer 10 min', 'posponerNotif', 'enlace', `data-id="${n.id}"`) + btn('Hecho', 'hechoNotif', 'enlace', `data-id="${n.id}"`) : '') : ''}</span></div>`; }).join('') : '<p class="nota">No tienes notificaciones.</p>', btn('Cerrar', 'cerrarModal') + (ns.some(n => !n.leida) ? btn('Marcar todas como leídas', 'leerNotifs', 'primario') : ''));
 }
 function filaConv(v) {
   const c = v.contacto ? C(v.contacto) : null, u = ultimoMsg(v), r = v.resp ? U(v.resp) : null;
@@ -290,7 +396,7 @@ function vBandeja() {
       <section class="b-lista">
         <div class="l-cab">
           <select data-cambio="numero"><option value="todos">Todos mis números</option>${DB.numeros.filter(n => yo.numeros.includes(n.id)).map(n => `<option value="${n.id}" ${E.numero === n.id ? 'selected' : ''}>${esc(n.nombre)} · ${n.tel}</option>`).join('')}</select>
-          <div class="l-busca"><input id="busca" placeholder="Buscar por nombre o teléfono" value="${esc(E.busca)}"><button class="icono ${E.verFiltros ? 'activo' : ''}" data-accion="toggleFiltros" title="Filtros">${ico('filtro')}${numFiltros() ? `<b class="globo">${numFiltros()}</b>` : ''}</button></div>
+          <div class="l-busca"><input id="busca" placeholder="Buscar por nombre o teléfono" value="${esc(E.busca)}">${botonInd()}<button class="icono ${E.verFiltros ? 'activo' : ''}" data-accion="toggleFiltros" title="Filtros">${ico('filtro')}${numFiltros() ? `<b class="globo">${numFiltros()}</b>` : ''}</button></div>
           <div class="pests">${pests.map(p => `<button class="${E.pest === p[0] ? 'activo' : ''}" data-accion="pest" data-p="${p[0]}">${p[1]}${p[0] === 'contickets' ? ` <b>${convsVisibles().filter(ticketsAbiertosDe).length}</b>` : ''}</button>`).join('')}</div>
           ${E.pest === 'contickets' ? `<div class="f-fila sub-pest"><label class="check"><input type="checkbox" data-cambio="filtroBool" data-k="misTickets" ${E.f.misTickets ? 'checked' : ''}>Solo tickets asignados a mí</label><small>Primero el ticket más antiguo</small></div>` : ''}
           ${E.verFiltros ? panelFiltros() : ''}
@@ -367,6 +473,7 @@ function detalle(v) {
     <div class="d-sec"><h5>Tags ${btn('+ Tag', 'tagModal', 'enlace')}</h5><div class="tags">${todos.length ? todos.map(t => `<span class="tag" style="--c:${TAG(t).c}">${esc(TAG(t).n)}<i data-accion="quitarTag" data-id="${t}">×</i></span>`).join('') : '<small class="nota">Sin tags</small>'}</div></div>
     <div class="d-sec"><h5>Tickets ${puede('AS') ? btn('+ Levantar ticket', 'ticketModal', 'enlace') : ''}</h5>${tickets.length ? tickets.map(k => `<a class="d-ticket" data-accion="verTicket" data-id="${k.id}"><span>#${k.id} · ${esc(k.motivo)}</span>${estadoChip(estadoTk(k))}</a>`).join('') : '<small class="nota">Sin tickets</small>'}</div>
     <div class="d-sec"><h5>Notas internas ${btn('+ Nota', 'notaModal', 'enlace')}</h5>${c.notas.length ? c.notas.map(n => `<div class="d-nota">${esc(n.t)}<small>${esc(U(n.por).nombre)} · ${n.f}</small></div>`).join('') : '<small class="nota">Sin notas</small>'}</div>
+    <div class="d-sec"><h5>Agenda ${btn('+ Agendar', 'agendarContacto', 'enlace', `data-id="${c.id}"`)}</h5>${(() => { const prox = DB.eventos.filter(ev => ev.contacto === c.id && ev.estado !== 'Hecho').sort((a, b) => a.fecha.localeCompare(b.fecha)); return prox.length ? prox.map(ev => `<a class="d-ticket" data-accion="verEvento" data-id="${ev.id}"><span>${esc(ev.titulo)}</span><small>${esc(fechaTxt(new Date(ev.fecha)))}</small></a>`).join('') : '<small class="nota">Sin eventos agendados</small>'; })()}</div>
     <div class="d-sec"><h5>Permiso para campañas</h5><div class="d-fila">${chip(consent[0], consent[1])}${c.consent === 'sin' ? btn('Registrar que acepta', 'registrarPermiso', 'enlace') : c.consent === 'otorgado' ? btn('Quitar registro', 'quitarPermiso', 'enlace') : ''}${c.consent !== 'baja' ? btn('Dar de baja', 'baja', 'enlace rojo') : ''}</div>${textoPermiso(c)}${v.campana ? `<small class="nota">Llegó por la campaña: ${esc(DB.campanas.find(k => k.id === v.campana).nombre)}</small>` : ''}</div>`;
 }
 function refrescaChat() {
@@ -636,7 +743,7 @@ function verCampana(id) {
   refrescaEntradas();
   const k = DB.campanas.find(x => x.id === id);
   const d = [['Enviados', k.enviados], ['Entregados', k.entregados], ['Leídos', k.leidos], ['Respuestas', k.respuestas], ['Clics', k.clics], ['Bajas', k.bajas], ['Conversiones', k.conversiones], ['Con error', k.errores]];
-  abrirModal(esc(k.nombre), `<div class="d-fila">${estadoChip(k.estado)}<span>${k.tipo} · ${k.fecha} · ${N(k.numero).nombre}</span></div><div class="resumen">${d.map(x => `<div><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join('')}</div>${k.tipo === 'Envío' || k.embudo ? `<div class="d-fila"><span>Embudo</span><span>${k.embudo && TB(k.embudo) ? esc(TB(k.embudo).n) : 'Campaña · ' + esc(k.nombre)}</span></div>` : `<div class="d-fila"><span>Palabras clave</span><span>${k.claves ? esc(k.claves) : 'ninguna'}</span></div>`}<p class="nota">La conversión cuenta cuando el contacto llega a una etapa ganada dentro de los 15 días siguientes a la campaña.</p>`, (k.tipo === 'Entrada' && k.inicio && k.estado !== 'Finalizada' ? btn('Editar fechas', 'fechasCamp', '', `data-id="${k.id}"`) : '') + (k.estado === 'Programada' && k.tipo !== 'Entrada' ? btn('Cancelar campaña', 'cancelarCamp', 'peligro', `data-id="${k.id}"`) + btn('Reprogramar', 'reprogramarCamp', '', `data-id="${k.id}"`) : '') + (DB.embudos.some(b => b.campana === k.id) ? btn('Ver embudo de la campaña', 'selEmbudo', '', `data-id="${DB.embudos.find(b => b.campana === k.id).id}"`) : '') + btn('Cerrar', 'cerrarModal'), 'ancho');
+  abrirModal(esc(k.nombre), `<div class="d-fila">${estadoChip(k.estado)}<span>${k.tipo} · ${k.fecha} · ${N(k.numero).nombre}</span></div><div class="resumen">${d.map(x => `<div><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join('')}</div>${k.tipo === 'Envío' || k.embudo ? `<div class="d-fila"><span>Embudo</span><span>${k.embudo && TB(k.embudo) ? esc(TB(k.embudo).n) : 'Campaña · ' + esc(k.nombre)}</span></div>` : `<div class="d-fila"><span>Palabras clave</span><span>${k.claves ? esc(k.claves) : 'ninguna'}</span></div>`}<p class="nota">La conversión cuenta cuando el contacto llega a una etapa ganada dentro de los 15 días siguientes a la campaña.</p>`, btn('Agendar recordatorio', 'agendarCampana', 'enlace', `data-id="${k.id}"`) + (k.tipo === 'Entrada' && k.inicio && k.estado !== 'Finalizada' ? btn('Editar fechas', 'fechasCamp', '', `data-id="${k.id}"`) : '') + (k.estado === 'Programada' && k.tipo !== 'Entrada' ? btn('Cancelar campaña', 'cancelarCamp', 'peligro', `data-id="${k.id}"`) + btn('Reprogramar', 'reprogramarCamp', '', `data-id="${k.id}"`) : '') + (DB.embudos.some(b => b.campana === k.id) ? btn('Ver embudo de la campaña', 'selEmbudo', '', `data-id="${DB.embudos.find(b => b.campana === k.id).id}"`) : '') + btn('Cerrar', 'cerrarModal'), 'ancho');
 }
 
 /* ---------- Pantallas de configuración ---------- */
@@ -1373,7 +1480,7 @@ const vLogin = () => `<div class="acceso"><div class="a-caja"><span class="logo 
   ${btn('Entrar', 'entrar', 'primario ancho')}<a data-accion="registro">Registrar mi empresa · 7 días gratis</a><a data-accion="aviso" data-t="Se enviaría un correo para recuperar la contraseña">Olvidé mi contraseña</a></div></div>`;
 const vPausa = () => `<div class="acceso"><div class="a-caja"><span class="logo grande ambar">!</span><h1>Tu prueba terminó</h1><p>Tu cuenta está en pausa. Tus mensajes entrantes se siguen guardando, pero no puedes responder ni enviar campañas hasta activar un paquete.</p>${btn('Contactar para activar mi paquete', 'aviso', 'primario ancho', 'data-t="Se abriría el contacto de ventas"')}<a data-accion="entrar">Volver al prototipo</a></div></div>`;
 
-const VISTAS = { empresa: vEmpresa, bandeja: vBandeja, embudo: vEmbudo, contactos: vContactos, tickets: vTickets, campanas: vCampanas, listas: vListas, reportes: vReportes, numeros: vNumeros, plantillas: vPlantillas, respuestas: vRespuestas, automaticos: vAutomaticos, tags: vTags, bajas: vBajas, usuarios: vUsuarios, plan: vPlan, empresas: vEmpresas, paquetes: vPaquetes, numerosPlat: vNumerosPlat, perfil: vPerfil };
+const VISTAS = { agenda: vAgenda, empresa: vEmpresa, bandeja: vBandeja, embudo: vEmbudo, contactos: vContactos, tickets: vTickets, campanas: vCampanas, listas: vListas, reportes: vReportes, numeros: vNumeros, plantillas: vPlantillas, respuestas: vRespuestas, automaticos: vAutomaticos, tags: vTags, bajas: vBajas, usuarios: vUsuarios, plan: vPlan, empresas: vEmpresas, paquetes: vPaquetes, numerosPlat: vNumerosPlat, perfil: vPerfil };
 
 /* ---------- Pintado ---------- */
 function render() {
@@ -1450,6 +1557,25 @@ const A = {
   quitarPermiso: () => { const c = C(CONV().contacto); c.consent = 'sin'; delete c.permiso; render(); aviso('Se quitó el registro; las campañas le siguen llegando mientras no se dé de baja'); },
   baja: () => { const c = C(CONV().contacto); if (!confirm(`¿Dar de baja a ${c.nombre}? Ya no recibirá campañas. Podrás seguir atendiéndolo cuando escriba.`)) return; c.consent = 'baja'; DB.bajas.unshift({ tel: c.tel, contacto: c.nombre, fecha: new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }), origen: 'Manual', campana: '—' }); render(); aviso('Agregado a la lista de supresión'); },
   verTicket: d => verTicket(d.id),
+  indModo: d => { E.indModo = d.v; guardaLocal('crm.indModo', d.v); E.indDetalle = false; render(); aviso(d.v === 'oculto' ? 'Indicadores ocultos: los ves con el botón de la gráfica' : 'Indicadores anclados arriba'); },
+  indDetalle: () => { E.indDetalle = !E.indDetalle; render(); },
+  nuevoEvento: d => formEvento(null, d && d.f ? { f: d.f } : {}),
+  agendarContacto: d => formEvento(null, { tipo: 'Cliente', contacto: d.id }),
+  agendarCampana: d => { cerrarModal(); formEvento(null, { tipo: 'Campaña', campana: d.id }); },
+  verEvento: d => verEvento(d.id),
+  editarEvento: d => formEvento(EV(d.id)),
+  eliminarEvento: d => { const ev = EV(d.id); abrirModal('Eliminar evento', '<p>Se elimina «' + esc(ev.titulo) + '» y su recordatorio.</p>', btn('Cancelar', 'cerrarModal') + btn('Eliminar', 'confirmarEliminarEvento', 'primario rojo-btn', 'data-id="' + ev.id + '"')); },
+  confirmarEliminarEvento: d => { DB.eventos = DB.eventos.filter(x => x.id !== d.id); DB.notifs = DB.notifs.filter(n => n.evento !== d.id); cerrarModal(); render(); aviso('Evento eliminado'); },
+  hechoEvento: d => { const ev = EV(d.id); ev.estado = ev.estado === 'Hecho' ? 'Pendiente' : 'Hecho'; cerrarModal(); render(); aviso(ev.estado === 'Hecho' ? 'Marcado como hecho' : 'De nuevo pendiente'); },
+  diaAg: d => { E.diaAg = d.f; render(); },
+  elegirCli: d => { const c = C(d.id), i = $('#buscaCli'); i.value = c.nombre + ' · ' + c.tel; $('#formGen [name=cid]').value = c.id; $('#sugCli').innerHTML = ''; },
+  mesAg: d => { const h = new Date(), m = E.mesAg != null ? new Date(E.mesAg) : new Date(h.getFullYear(), h.getMonth(), 1); E.mesAg = new Date(m.getFullYear(), m.getMonth() + +d.d, 1).getTime(); render(); },
+  verCampanaEv: d => { cerrarModal(); E.ruta = 'campanas'; render(); verCampana(d.id); },
+  verNotifs,
+  abrirNotif: d => { const n = DB.notifs.find(x => x.id === d.id); n.leida = true; cerrarModal(); render(); verEvento(n.evento); },
+  posponerNotif: d => { const n = DB.notifs.find(x => x.id === d.id), ev = EV(n.evento); n.leida = true; ev.pospuesto = Date.now() + 10 * 60000; ev.notificado = false; verNotifs(); render(); aviso('Te lo recuerdo en 10 minutos'); },
+  hechoNotif: d => { const n = DB.notifs.find(x => x.id === d.id); n.leida = true; EV(n.evento).estado = 'Hecho'; verNotifs(); render(); },
+  leerNotifs: () => { misNotifs().forEach(n => { n.leida = true; }); cerrarModal(); render(); },
   // Eliminar un embudo: solo los generales, y solo si ya no tiene contactos ni lo usa una campaña. Si no, se desactiva.
   eliminarEmbudo: d => { const b = TB(d.id), n = DB.posiciones.filter(x => x.b === b.id).length, camp = DB.campanas.find(k => k.embudo === b.id);
     if (b.tipo !== 'general') return aviso(b.tipo === 'tickets' ? 'El embudo de tickets no se puede eliminar' : 'El embudo de una campaña no se elimina: guarda su historial');
@@ -1603,12 +1729,14 @@ document.addEventListener('change', ev => {
   if (k === 'embCamp') return $('#filtroCamp').innerHTML = infoEmbCamp(TB(el.value));
   if (k === 'numCamp') { const ap = plantillasDe(el.value).filter(p => p.estado === 'Aprobada'), sl = $('#formCamp [name=plantilla]'); sl.innerHTML = ap.map(p => `<option>${p.nombre}</option>`).join(''); $('#formCamp [name=embudo]').innerHTML = opsEmbCamp(el.value); $('#filtroCamp').innerHTML = infoEmbCamp(embudosCamp(el.value)[0]); campMapeo = { _tel: campMapeo._tel }; campArchivo = null; return pintaCamp(); }
   if (k === 'previaCamp') { campMapeo = { _tel: campMapeo._tel }; campArchivo = null; return pintaCamp(); }
+  if (k === 'verEvTodos') { E.verEvTodos = el.checked; return render(); }
   if (k === 'segCamp') { campSeg = [...document.querySelectorAll('#formCamp [name=segTag]:checked')].map(x => x.value); campFila = 0; return pintaCamp(); }
   if (k === 'audCamp' || k === 'listaCamp') { campMapeo = {}; campFila = 0; aplicarSi(); return pintaCamp(); }
   render();
 });
 document.addEventListener('input', ev => {
   if (ev.target.closest('#modal form') || ev.target.closest('#formEmp')) aplicarSi();
+  if (ev.target.id === 'buscaCli') { const h = $('#formGen [name=cid]'); if (h) h.value = ''; pintaSugCli(); }
   if (ev.target.closest('.estado-sw')) { const b = ev.target.closest('.estado-sw').querySelector('b'); b.textContent = ev.target.checked ? b.dataset.on : b.dataset.off; }
   if (ev.target.closest('.bloque-h') && ev.target.type === 'checkbox') { const bl = ev.target.closest('.bloque-h'); bl.classList.toggle('cerrado', !ev.target.checked); bl.querySelector('.estado-h').textContent = ev.target.checked ? '' : 'Cerrado'; }
   if (ev.target.closest('#formGen') && ['r', 'prueba'].includes(ev.target.name)) pruebaRegex();
@@ -1654,3 +1782,7 @@ try { E.menuCol = !!localStorage.getItem('crmMenuCol'); } catch (e) {}
 // Embudo: abre con el primer embudo (o el único que haya) y con un mes de fechas ya puesto.
 { const h = hoy0(), d = new Date(h.getFullYear(), h.getMonth() - 1, h.getDate()); E.tb = { pre: 'per', desde: aLocal(d).slice(0, 10), hasta: aLocal(h).slice(0, 10) }; E.embudo = DB.embudos[0].id; }
 render();
+// Fechas de los eventos de ejemplo, relativas a hoy (el primero avisa al minuto de abrir el prototipo).
+{ const en = m => aLocal(new Date(Date.now() + m * 60000)); const f = { ev1: en(1), ev2: aLocal(new Date(new Date().setHours(24 + 10, 0, 0, 0))), ev3: aLocal(new Date(new Date().setHours(24 * 3 + 9, 30, 0, 0))), ev4: en(90) }; DB.eventos.forEach(ev => { if (!ev.fecha) ev.fecha = f[ev.id]; }); }
+// Recordatorios de la agenda: se revisan cada 10 segundos.
+setInterval(revisaAvisos, 10000); setTimeout(revisaAvisos, 1500);

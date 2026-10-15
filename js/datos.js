@@ -165,6 +165,15 @@ const DB = {
   ],
 
   // numero: null = todos los números.
+  // Agenda: tipo Cliente, Campaña o Nota; aviso en minutos antes; para = usuario que recibe el recordatorio.
+  eventos: [
+    { id: 'ev1', tipo: 'Cliente', contacto: 'c1', campana: null, titulo: 'Confirmar el pedido de Mariana', fecha: '', aviso: 0, para: 'u1', por: 'u1', estado: 'Pendiente', nota: 'Pidió el catálogo de otoño y quiere saber si hay envío gratis.' },
+    { id: 'ev2', tipo: 'Campaña', contacto: null, campana: 'k3', titulo: 'Revisar resultados de Reactivación 3 meses', fecha: '', aviso: 60, para: 'u1', por: 'u1', estado: 'Pendiente', nota: '' },
+    { id: 'ev3', tipo: 'Nota', contacto: null, campana: null, titulo: 'Junta semanal con el equipo de ventas', fecha: '', aviso: 1440, para: 'u1', por: 'u2', estado: 'Pendiente', nota: 'Llevar el reporte de conversiones.' },
+    { id: 'ev4', tipo: 'Cliente', contacto: 'c3', campana: null, titulo: 'Dar seguimiento al envío de Lucía', fecha: '', aviso: 10, para: 'u3', por: 'u2', estado: 'Pendiente', nota: '' }
+  ],
+  notifs: [],
+
   respuestas: [
     { id: 'r1', titulo: 'Saludo', texto: '¡Hola! Gracias por escribir a Aromas del Norte. ¿En qué te puedo ayudar?', archivo: '' },
     { id: 'r2', titulo: 'Catálogo', texto: 'Te comparto nuestro catálogo vigente 👇', archivo: 'Catalogo-otono-2026.pdf' },
